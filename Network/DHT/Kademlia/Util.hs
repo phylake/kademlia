@@ -1,7 +1,9 @@
 {-# LANGUAGE RecordWildCards #-}
 module Network.DHT.Kademlia.Util where
 
+import           Control.Concurrent
 import           Control.Concurrent.STM
+import           Control.Monad
 import           Data.Binary
 import           Data.Word
 import           GHC.IO.Handle
@@ -48,3 +50,7 @@ tryReassemble :: V.Vector B.ByteString -> Maybe B.ByteString
 tryReassemble v = if V.null v || V.any (== B.empty) v
   then Nothing
   else Just $ V.foldl1 B.append v
+
+forkIO_ :: IO () -> IO ()
+forkIO_ = void . forkIO
+{-# INLINE forkIO_ #-}

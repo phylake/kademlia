@@ -10,13 +10,14 @@ import           Control.Concurrent.Suspend.Lifted (sDelay)
 import           Control.Concurrent.Timer
 import           Control.Monad
 import           Data.Binary
+import           Data.Time.Clock
 import           Data.Vector ((!), (//))
 import           Data.Word
 import           GHC.Conc.Sync (getNumCapabilities)
 import           Network.DHT.Kademlia.Bucket
-import           Network.DHT.Kademlia.Workers
 import           Network.DHT.Kademlia.Def
 import           Network.DHT.Kademlia.Util
+import           Network.DHT.Kademlia.Workers
 import           Network.Socket
 import           System.Environment
 import           System.Posix.Signals (installHandler, Handler(Catch), sigINT, sigTERM)
@@ -41,28 +42,35 @@ wait mv = do
     else wait mv
 
 runKademlia :: Config -> IO ()
-runKademlia cfg@(Config{..}) = do
+runKademlia config@(Config{..}) = do
   -- init networking
   -- apparently this is also needed on unix without -threaded
   -- http://hackage.haskell.org/package/network-2.4.0.1/docs/Network-Socket.html#v:withSocketsDo
   withSocketsDo $ return ()
 
-  -- TODO 1. load periodically saved routing table
-  --      2. fall back to table specified in cfgRoutingTablePath
+  -- TODO bottom of 2.3
+  --      1. load periodically saved routing table
+  --      2. fall back to table specified in cfgRoutingTablePath for nodes that
+  --         aren't new to the network
   --      3. PING each least recently seen node
   (rt :: RoutingTable) <- atomically defaultRoutingTable
 
   sock <- socket AF_INET Datagram defaultProtocol
-  addr <- inet_addr $ T.unpack cfgHost
-  let mySockAddr = SockAddrInet (PortNum cfgPort) addr
-  let thisPeer = Peer (read $ T.unpack cfgNodeId) mySockAddr
-  
+
+  privateSockAddr <- liftM (SockAddrInet $ PortNum cfgPort) $
+                           inet_addr "127.0.0.1"
+
+  publicSockAddr <- liftM (SockAddrInet $ PortNum cfgPort) $
+                          inet_addr $ T.unpack cfgHost
+
+  let thisPeer = Peer (read $ T.unpack cfgNodeId) publicSockAddr
+
   mvDataStore <- defaultDataStore >>= newMVar
   mvStoreHT <- H.new >>= newMVar
-  pingREQs <- newMVar V.empty
+  pingREQs <- atomically $ newTVar V.empty
 
   let env :: KademliaEnv = KademliaEnv{..}
-  
+
   {-case args of
     (yourport:[]) -> do
       mv <- newMVar 0
@@ -84,22 +92,27 @@ runKademlia cfg@(Config{..}) = do
         --(NB.sendAll sock $ BL.toStrict $ encode RPC_PING)
         (return ())
         (sDelay $ read delaySecs)
-      
+
       (storeHT :: StoreHT) <- H.new
       mvStoreHT <- newMVar storeHT
 
-      bind sock mySockAddr
+      bind sock privateSockAddr
       caps <- getNumCapabilities
       --void $ replicateM (caps - 1) $ forkIO $ loop mvStoreHT sock
       loop (KademliaEnv{..}) sock-}
-  
+
+  -- WORKERS
   interactive env
-  pingREQReaper cfgPingReqTimeoutUs env
-  bind sock mySockAddr
+  pingREQReaper env
+
+  -- BIND
+  bind sock privateSockAddr
   putStrLn $ "Kademlia bound to " ++ show cfgPort
   caps <- getNumCapabilities
   putStrLn $ "num capabilities [" ++ show caps ++ "]"
-  --void $ replicateM (caps - 1) $ forkIO $ loop mvStoreHT sock
+  -- TODO see if there are any gains to be had here.
+  --      i think recvFrom blocks across all threads making this useless
+  --void $ replicateM (caps - 1) $ forkIO $ loop env sock
   loop env sock
 
   return ()
@@ -112,9 +125,30 @@ loop (KademliaEnv{..}) sock = forever $ do
     let rpc :: RPC = decode $ BL.fromStrict bs
     case rpc of
       RPC_PING_REQ thatPeer -> do
+        now <- getCurrentTime
+        atomically $ do
+          pings <- readTVar pingREQs
+          writeTVar pingREQs $ V.snoc pings (now, thatPeer)
         send $ RPC_PING_REP thisPeer
       RPC_PING_REP thatPeer -> do
-        void $ addPeer thisPeer rt thatPeer
+        foundPeer <- atomically $ do
+          pings <- readTVar pingREQs
+          let f = (\(bool, v) t@(_, p) -> case bool of
+                                            True -> return (True, V.snoc v t)
+                                            False -> if p == thatPeer
+                                              then return (True, v)
+                                              else return (False, V.snoc v t))
+          (foundPeer, pings') <- V.foldM f (False, V.empty) pings
+          if foundPeer then
+            writeTVar pingREQs pings'
+          else
+            -- nothing to do but write back old value
+            writeTVar pingREQs pings
+          return foundPeer
+        if foundPeer then
+          void $ addPeer thisPeer rt thatPeer
+        else
+          putStrLn "[WARNING] got a PING_REP from an unknown peer"
       RPC_STORE_REQ k n m l bs -> do
         -- TODO only lock on write?
         storeHT <- takeMVar mvStoreHT -- TAKE
@@ -132,14 +166,14 @@ loop (KademliaEnv{..}) sock = forever $ do
           let vec' = vec // [(fromIntegral n, bs)]
           writeTVar tvVec vec'
           return $ tryReassemble vec'
-        
+
         case mAssm of
           Nothing -> return ()
           Just value -> do
             storeHT <- takeMVar mvStoreHT -- TAKE
             H.delete storeHT k
             putMVar mvStoreHT storeHT -- PUT
-            
+
             dataStore@(DataStore{..}) <- takeMVar mvDataStore -- TAKE
             dsSet k value
             putMVar mvDataStore dataStore -- PUT

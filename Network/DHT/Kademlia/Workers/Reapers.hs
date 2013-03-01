@@ -10,6 +10,7 @@ import           Control.Monad
 import           Data.Binary
 import           Data.Conduit
 import           Data.Conduit.Network
+import           Data.Time.Clock
 import           Data.Vector ((!), (//))
 import           Network.DHT.Kademlia.Bucket
 import           Network.DHT.Kademlia.Def
@@ -24,8 +25,17 @@ import qualified Data.Text as T
 import qualified Data.Vector as V
 
 -- | Outstanding PING requests that timeout need to update k-buckets accordingly
-pingREQReaper :: Int -> KademliaEnv -> IO ()
-pingREQReaper timeout env@(KademliaEnv{..}) = void $ forkIO loop where
-  loop = do
-    threadDelay timeout
-    loop
+pingREQReaper :: KademliaEnv -> IO ()
+pingREQReaper (KademliaEnv{..}) = forkIO_ $ forever $ do
+  threadDelay $ secToMicro 2 -- should be >= threshold
+  now <- getCurrentTime
+  atomically $ do
+    pings <- readTVar pingREQs
+    
+    let (expired, rest) = V.partition (\(t,_) -> diffUTCTime now t > threshold) pings
+    -- TODO update k buckets containing expired
+    --V.forM l $ \(_, p) -> putStrLn (show p ++ " timed out")
+    
+    writeTVar pingREQs rest
+  where
+    threshold = 1 -- should be <= threadDelay

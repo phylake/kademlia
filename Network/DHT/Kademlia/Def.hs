@@ -121,7 +121,6 @@ data Config = Config {
                      , cfgHost :: Text
                      , cfgPort :: Word16
                      , cfgRoutingTablePath :: Text
-                     , cfgPingReqTimeoutUs :: Int
                      , cfgDSType :: DataStoreType
                      }
 
@@ -131,19 +130,18 @@ instance FromJSON Config where
     (v .:? "host" .!= "127.0.0.1") <*>
     (v .:? "port" .!= 3000) <*>
     (v .: "routingTablePath") <*>
-    (v .:? "pingReqTimeout" .!= 3000) <*>
     (v .:? "dataStore" .!= HashTables)
   parseJSON _ = mzero
 
 type StoreHT = H.BasicHashTable B.ByteString (TVar (V.Vector B.ByteString))
 
 data KademliaEnv = KademliaEnv {
-                                 cfg :: Config
+                                 config :: Config
                                , mvDataStore :: MVar DataStore
                                , rt :: RoutingTable
                                , mvStoreHT :: MVar StoreHT
                                , thisPeer :: Peer
-                               , pingREQs :: MVar (V.Vector (UTCTime, Peer))
+                               , pingREQs :: TVar (V.Vector (UTCTime, Peer))
                                --, rpc :: RPCHooks
                                }
 
