@@ -73,20 +73,29 @@ data Hooks = Hooks {
 
 type DataStore = (B.ByteString -> IO (Maybe B.ByteString))
 
+-- | IPv4 minimum reassembly buffer size = 576 bytes
+-- minus IP header = 20 bytes
+-- minus UDP header = 8 bytes
+-- == 548 bytes
+recvBytes :: Int
+recvBytes = 548
+
 runKademlia :: DataStore -> IO ()
 runKademlia ds = do
+  putStrLn "runKademlia"
+  
   (delaySecs:myport:args) <- getArgs
+  
   sock <- socket AF_INET Datagram defaultProtocol
   addr <- inet_addr "127.0.0.1"
   let mySockAddr = SockAddrInet (PortNum $ read myport) addr
   bind sock mySockAddr
   
   case args of
-    (yourport:[]) -> void . forkIO $ do
-      threadDelay $ microToSec $ read delaySecs
+    (yourport:[]) -> void $ replicateM 20 $ forkIO $ do
+      threadDelay $ secToMicro $ read delaySecs
       let yourSockAddr = SockAddrInet (PortNum $ read yourport) addr
-      connect sock yourSockAddr
-      NB.sendAll sock $ BL.toStrict $ encode RPC_PING
+      NB.sendAllTo sock (BL.toStrict $ encode RPC_PING) yourSockAddr
     _ -> return ()
   
   t <- repeatedTimer
@@ -99,17 +108,17 @@ runKademlia ds = do
   installHandler sigTERM (Catch $ handler sigMV) Nothing-}
 
   forever $ do
-    (bs, sockAddr) <- NB.recvFrom sock 512
-    let rpc :: RPC = decode $ BL.fromStrict bs
-    case rpc of
-      RPC_PING -> do
-        connect sock sockAddr
-        NB.sendAll sock "PONG"
-        putStrLn $ "received: " ++ (show rpc)
-      _ -> do
-        putStrLn $ "received: " ++ (show $ BC.unpack bs)
-
-    --(bs, _) <- NB.recvFrom sock 512
+    (bs, sockAddr) <- NB.recvFrom sock recvBytes
+    forkIO $ do
+      let send = flip (NB.sendAllTo sock) sockAddr
+      let rpc :: RPC = decode $ BL.fromStrict bs
+      case rpc of
+        RPC_PING -> do
+          send "PONG"
+          putStrLn $ "received: " ++ (show rpc)
+        _ -> do
+          putStrLn $ "received: " ++ (BC.unpack bs)
+          return ()
 
   let cleanup = do {
     putStrLn "cleaning up";
@@ -123,10 +132,10 @@ runKademlia ds = do
 loop :: Socket -> MVar Int -> IO () -> IO ()
 loop sock sigMV cleanup = do
   return ()
-  --mData <- timeout (microToSec 4) $ B.recvFrom sock 0x200
+  --mData <- timeout (secToMicro 4) $ B.recvFrom sock 0x200
 
-microToSec :: Int -> Int
-microToSec t = t * fromIntegral (10 ** 6 :: Double)
+secToMicro :: Int -> Int
+secToMicro t = t * fromIntegral (10 ** 6 :: Double)
 
 instance Integral Float where
   quotRem a b = (fab, (ab - fab)*b)
