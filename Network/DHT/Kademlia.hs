@@ -5,12 +5,14 @@
 module Network.DHT.Kademlia (runKademlia) where
 
 import           Control.Concurrent
-import           Control.Concurrent.MVar (modifyMVar_, newMVar, withMVar, MVar)
-import           Control.Concurrent.Suspend.Lifted
+import           Control.Concurrent.STM
+import           Control.Concurrent.Suspend.Lifted (sDelay)
 import           Control.Concurrent.Timer
 import           Control.Monad
 import           Data.Binary
 import           Data.Word
+import           Network.DHT.Kademlia.Def
+import           Network.DHT.Kademlia.Util
 import           Network.Socket
 import           System.Environment
 import           System.Posix.Signals (installHandler, Handler(Catch), sigINT, sigTERM)
@@ -21,75 +23,18 @@ import qualified Data.ByteString.Lazy as BL
 import qualified Data.Vector as V
 import qualified Network.Socket.ByteString as NB
 
-{-
-160 bits
-k-bucket = list = [(IP, Port, NodeId)]
-1 bucket per bit that is of length k
-k is some system wide constant
--}
-
--- | System-wide constant
-k :: Int
-k = 20
-
-bits :: Int
-bits = 3
-
-type NodeId = Integer
-type LastSeen = Integer
-
--- | Sorted by LastSeen
-type KBucket = V.Vector (SockAddr, NodeId, LastSeen)
-
-data RPC = RPC_UNKNOWN
-         | RPC_PING
-         | RPC_STORE
-         | RPC_FIND_NODE NodeId
-         | RPC_FIND_VALUE
-         deriving (Show)
-
-instance Binary RPC where
-  put (RPC_PING) = putWord8 1
-  put (RPC_STORE) = putWord8 2
-  put (RPC_FIND_NODE _) = putWord8 3
-  put (RPC_FIND_VALUE) = putWord8 4
-  
-  get = do
-    w <- getWord8
-    case w of
-      1 -> return $ RPC_PING
-      2 -> return $ RPC_STORE
-      3 -> return $ RPC_FIND_NODE 0
-      4 -> return $ RPC_FIND_VALUE
-      otherwise -> return RPC_UNKNOWN
-
 handler :: MVar Int -> IO ()
 handler sigMV = modifyMVar_ sigMV (return . (+1))
 
-data Hooks = Hooks {
-                     hkPing :: (Int -> IO ())
-                   , hkPing2 :: (Int -> IO ())
-                   }
-
-type DataStore = (B.ByteString -> IO (Maybe B.ByteString))
-
--- | IPv4 minimum reassembly buffer size = 576 bytes
--- minus IP header = 20 bytes
--- minus UDP header = 8 bytes
--- == 548 bytes
-recvBytes :: Int
-recvBytes = 548
-
 runKademlia :: DataStore -> IO ()
 runKademlia ds = do
-  putStrLn "runKademlia"
-  
+  (rt :: RoutingTable) <- V.replicateM bits $ atomically (newTVar V.empty)
+
   (delaySecs:myport:args) <- getArgs
   
   sock <- socket AF_INET Datagram defaultProtocol
   addr <- inet_addr "127.0.0.1"
   let mySockAddr = SockAddrInet (PortNum $ read myport) addr
-  bind sock mySockAddr
   
   case args of
     (yourport:[]) -> void $ replicateM 20 $ forkIO $ do
@@ -107,6 +52,7 @@ runKademlia ds = do
   installHandler sigINT (Catch $ handler sigMV) Nothing
   installHandler sigTERM (Catch $ handler sigMV) Nothing-}
 
+  bind sock mySockAddr
   forever $ do
     (bs, sockAddr) <- NB.recvFrom sock recvBytes
     forkIO $ do
@@ -133,20 +79,3 @@ loop :: Socket -> MVar Int -> IO () -> IO ()
 loop sock sigMV cleanup = do
   return ()
   --mData <- timeout (secToMicro 4) $ B.recvFrom sock 0x200
-
-secToMicro :: Int -> Int
-secToMicro t = t * fromIntegral (10 ** 6 :: Double)
-
-instance Integral Float where
-  quotRem a b = (fab, (ab - fab)*b)
-    where
-      ab = a/b
-      fab = floor ab
-  toInteger = floor
-
-instance Integral Double where
-  quotRem a b = (fab, (ab - fab)*b)
-    where
-      ab = a/b
-      fab = floor ab
-  toInteger = floor
