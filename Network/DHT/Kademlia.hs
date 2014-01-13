@@ -10,7 +10,9 @@ import           Control.Concurrent.Suspend.Lifted (sDelay)
 import           Control.Concurrent.Timer
 import           Control.Monad
 import           Data.Binary
+import           Data.Vector ((!))
 import           Data.Word
+import           Network.DHT.Kademlia.Bucket
 import           Network.DHT.Kademlia.Def
 import           Network.DHT.Kademlia.Util
 import           Network.Socket
@@ -28,7 +30,8 @@ handler sigMV = modifyMVar_ sigMV (return . (+1))
 
 runKademlia :: DataStore -> IO ()
 runKademlia ds = do
-  (rt :: RoutingTable) <- V.replicateM bits $ atomically (newTVar V.empty)
+  (rt :: RoutingTable) <- V.replicateM systemBits (atomically $ newTVar defaultKBucket)
+                      >>= atomically . newTVar
 
   (delaySecs:myport:args) <- getArgs
   
@@ -62,6 +65,12 @@ runKademlia ds = do
         RPC_PING -> do
           send "PONG"
           putStrLn $ "received: " ++ (show rpc)
+        RPC_STORE -> do
+          return ()
+        RPC_FIND_NODE _ -> do
+          return ()
+        RPC_FIND_VALUE -> do
+          return ()
         _ -> do
           putStrLn $ "received: " ++ (BC.unpack bs)
           return ()
