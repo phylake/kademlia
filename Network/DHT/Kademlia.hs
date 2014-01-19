@@ -30,7 +30,14 @@ handler sigMV = modifyMVar_ sigMV (return . (+1))
 
 runKademlia :: DataStore -> IO ()
 runKademlia ds = do
-  (rt :: RoutingTable) <- V.replicateM systemBits (atomically $ newTVar defaultKBucket)
+  -- init networking
+  -- apparently this is also needed on unix without -threaded
+  -- http://hackage.haskell.org/package/network-2.4.0.1/docs/Network-Socket.html#v:withSocketsDo
+  withSocketsDo $ return ()
+
+  -- "0x" ++ `cat /dev/urandom | tr -cd 'a-f0-9' | head -c 32`
+
+  (rt :: RoutingTable) <- V.replicateM (fromIntegral systemBits) (atomically $ newTVar defaultKBucket)
                       >>= atomically . newTVar
 
   (delaySecs:myport:args) <- getArgs
@@ -40,7 +47,7 @@ runKademlia ds = do
   let mySockAddr = SockAddrInet (PortNum $ read myport) addr
   
   case args of
-    (yourport:[]) -> void $ replicateM 20 $ forkIO $ do
+    (yourport:[]) -> void . replicateM 20 . forkIO $ do
       threadDelay $ secToMicro $ read delaySecs
       let yourSockAddr = SockAddrInet (PortNum $ read yourport) addr
       NB.sendAllTo sock (BL.toStrict $ encode RPC_PING) yourSockAddr
@@ -54,7 +61,7 @@ runKademlia ds = do
   {-sigMV <- newMVar 0
   installHandler sigINT (Catch $ handler sigMV) Nothing
   installHandler sigTERM (Catch $ handler sigMV) Nothing-}
-
+  
   bind sock mySockAddr
   forever $ do
     (bs, sockAddr) <- NB.recvFrom sock recvBytes

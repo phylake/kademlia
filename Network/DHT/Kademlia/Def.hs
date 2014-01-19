@@ -27,9 +27,10 @@ each bucket is length k
 -}
 
 systemK :: Int
-systemK = 20
+--systemK = 20
+systemK = 1
 
-systemBits :: Int
+systemBits :: Double
 systemBits = 3
 
 -- | IPv4 minimum reassembly buffer size = 576 bytes
@@ -46,22 +47,23 @@ data Hooks = Hooks {
 
 type DataStore = (B.ByteString -> IO (Maybe B.ByteString))
 
-type Key = Integer
-type LastSeen = Integer
+type Key = Double
+type LastSeen = Double
 
 data Peer = Peer {
-                   nodeId :: Integer
+                   nodeId :: Double
                  , location :: SockAddr
                  }
                  deriving (Show, Eq)
 
 data KBucket = KBucket {
                          kContent :: V.Vector (Peer, LastSeen) -- ^ Sorted by LastSeen
-                       , kMinRange :: Integer
-                       , kMaxRange :: Integer
+                       , kMinRange :: Double
+                       , kMaxRange :: Double
                        }
+                       deriving (Show)
 
-defaultKBucket = KBucket {kContent = V.empty, kMinRange = 0, kMaxRange = 0}
+defaultKBucket = KBucket {kContent = V.empty, kMinRange = 0, kMaxRange = 2 ** systemBits}
 
 -- | Length of `bits`
 --
