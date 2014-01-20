@@ -1,3 +1,4 @@
+{-# LANGUAGE CPP #-}
 {-module Network.DHT.Kademlia.Def (
   k
 , bits
@@ -27,11 +28,18 @@ each bucket is length k
 -}
 
 systemK :: Int
---systemK = 20
-systemK = 1
+#ifdef TEST
+systemK = 2
+#else
+systemK = 20
+#endif
 
 systemBits :: Double
+#ifdef TEST
 systemBits = 3
+#else
+systemBits = 160
+#endif
 
 -- | IPv4 minimum reassembly buffer size = 576 bytes
 -- minus IP header = 20 bytes
@@ -61,7 +69,7 @@ data KBucket = KBucket {
                        , kMinRange :: Double
                        , kMaxRange :: Double
                        }
-                       deriving (Show)
+                       deriving (Show, Eq)
 
 defaultKBucket = KBucket {kContent = V.empty, kMinRange = 0, kMaxRange = 2 ** systemBits}
 

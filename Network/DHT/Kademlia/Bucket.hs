@@ -1,5 +1,7 @@
 {-# LANGUAGE RecordWildCards #-}
-module Network.DHT.Kademlia.Bucket (addPeer, findKBucket, splitKBucket) where
+{-# LANGUAGE ScopedTypeVariables #-}
+--module Network.DHT.Kademlia.Bucket (addPeer, findKBucket, splitKBucket) where
+module Network.DHT.Kademlia.Bucket where
 
 import           Control.Concurrent.STM
 import           Data.Vector ((!), (//))
@@ -71,7 +73,56 @@ findKBucket (Peer key _) vec = loop (V.length vec - 1) where
           then return $ Just (kb, idx)
           else loop (idx - 1)
 
-splitKBucket :: Int
+splitKBucket :: Int -- ^ Index of bucket to split
              -> RoutingTable
              -> STM ()
-splitKBucket rt idx = undefined
+splitKBucket idx rt = do
+  kbuckets <- readTVar rt
+  KBucket{..} <- readTVar $ kbuckets ! idx
+  --let (l,r) = V.foldl (splitFold newMinRange) (V.empty, V.empty) kContent
+  --let (left, right) = V.splitAt newMinRange kContent
+  --writeTVar rt $ kbuckets // [()] V.concat [left, new, right]
+  return ()
+
+splitKBucketImpl :: KBucket -> (KBucket, KBucket)
+splitKBucketImpl KBucket{..} = (lBucket, rBucket)
+  where
+    newMinRange = kMaxRange - (kMaxRange - kMinRange)/2
+    
+    lBucket = KBucket {kContent = lContents, kMinRange = 0, kMaxRange = 0}
+    rBucket = KBucket {kContent = rContents, kMinRange = 0, kMaxRange = 0}
+    
+    (lContents, rContents) = V.foldl splitFold (V.empty, V.empty) kContent
+
+    splitFold :: (V.Vector (Peer, LastSeen), V.Vector (Peer, LastSeen))
+              -> (Peer, LastSeen)
+              -> (V.Vector (Peer, LastSeen), V.Vector (Peer, LastSeen))
+    splitFold (l,r) t@(Peer nodeId _, _) =
+      if nodeId > newMinRange
+        then (V.cons t l, r)
+        else (l, V.cons t r)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
