@@ -13,7 +13,7 @@ main :: IO ()
 main = hspec $ 
   describe "Kademlia" $ do
     testAssumptions
-    kBucket
+    --kBucket
 
 testAssumptions = describe "test assumptions" $ do
     it "systemK is 2" $ systemK `shouldBe` 2
