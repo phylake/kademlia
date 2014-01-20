@@ -1,0 +1,69 @@
+name:                kademlia
+version:             0.1.0.0
+synopsis:            Kademlia Distributed Hash Table
+-- description:         
+license:             BSD3
+license-file:        LICENSE
+author:              Brandon Cook
+maintainer:          phylake@gmail.com
+-- copyright:           
+category:            Network
+build-type:          Simple
+cabal-version:       >=1.10
+extra-source-files:
+  LICENSE
+  bench/readme.md
+  bench/UDPBench.hs
+  bench/UDPBenchServer.hs
+
+library
+  default-language:    Haskell2010
+  exposed-modules:     Network.DHT.Kademlia
+                     , Network.DHT.Kademlia.Bucket
+                     , Network.DHT.Kademlia.Def
+                     , Network.DHT.Kademlia.Util
+  other-modules:       Util.File
+                     , Util.Integral
+                     , Util.Misc
+                     , Util.Time
+                     , Util.Words
+  build-depends:       base >=4.6 && <4.7
+                     , binary >=0.6 && <0.7
+                     , bytestring >=0.10 && <0.11
+                     , data-binary-ieee754 >=0.4 && <0.5
+                     , directory >=1.2 && <1.3
+                     , filepath >=1.3 && <1.4
+                     , monadLib >=3.7 && <3.8
+                     , mtl >=2.1 && <2.2
+                     , network >=2.4 && <2.5
+                     , stm >=2.4 && <2.5
+                     , suspend >=0.2 && <0.3
+                     , time >=1.4 && <1.5
+                     , timers >=0.2 && <0.3
+                     , unix >=2.6 && <2.7
+                     , vector >=0.10 && <0.11
+  -- hs-source-dirs:      
+
+test-suite all
+    default-language:  Haskell2010
+    type:              exitcode-stdio-1.0
+    cpp-options:       -DTEST
+    hs-source-dirs:    test, .
+    main-is:           Tests.hs
+    build-depends:     base
+                     , hspec
+                     , kademlia
+                     , binary >=0.6 && <0.7
+                     , bytestring >=0.10 && <0.11
+                     , data-binary-ieee754 >=0.4 && <0.5
+                     , directory >=1.2 && <1.3
+                     , filepath >=1.3 && <1.4
+                     , monadLib >=3.7 && <3.8
+                     , mtl >=2.1 && <2.2
+                     , network >=2.4 && <2.5
+                     , stm >=2.4 && <2.5
+                     , suspend >=0.2 && <0.3
+                     , time >=1.4 && <1.5
+                     , timers >=0.2 && <0.3
+                     , unix >=2.6 && <2.7
+                     , vector >=0.10 && <0.11
