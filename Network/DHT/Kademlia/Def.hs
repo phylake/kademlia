@@ -13,9 +13,11 @@
 ) where-}
 module Network.DHT.Kademlia.Def where
 
-import           Control.Concurrent.STM (TVar(..))
+import           Control.Concurrent.STM
 import           Data.Binary
+import           Data.Vector ((!))
 import           Network.Socket (SockAddr(..))
+import           Util.Integral
 import qualified Data.ByteString as B
 import qualified Data.Vector as V
 
@@ -64,6 +66,7 @@ data Peer = Peer {
                  }
                  deriving (Show, Eq)
 
+-- | range is [kMinRange, kMaxRange)
 data KBucket = KBucket {
                          kContent :: V.Vector (Peer, LastSeen) -- ^ Sorted by LastSeen
                        , kMinRange :: Double
@@ -71,12 +74,18 @@ data KBucket = KBucket {
                        }
                        deriving (Show, Eq)
 
-defaultKBucket = KBucket {kContent = V.empty, kMinRange = 0, kMaxRange = 2 ** systemBits}
+defaultKBucket = KBucket {kContent = V.empty, kMinRange = 0, kMaxRange = 0}
 
--- | Length of `bits`
---
--- Outer TVar is only contentious on k-bucket splits.
-type RoutingTable = TVar (V.Vector (TVar KBucket))
+-- | Length of `systemBits`
+type RoutingTable = V.Vector (TVar KBucket)
+
+defaultRoutingTable :: STM RoutingTable
+defaultRoutingTable = do
+  rt <- V.replicateM systemBits' (newTVar defaultKBucket)
+  writeTVar (rt ! 0) $ defaultKBucket {kMaxRange = 2 ** systemBits}
+  return rt
+  where
+    systemBits' = fromIntegral systemBits
 
 data RPC = RPC_UNKNOWN
          | RPC_PING

@@ -37,8 +37,7 @@ runKademlia ds = do
 
   -- "0x" ++ `cat /dev/urandom | tr -cd 'a-f0-9' | head -c 32`
 
-  (rt :: RoutingTable) <- V.replicateM (fromIntegral systemBits) (atomically $ newTVar defaultKBucket)
-                      >>= atomically . newTVar
+  (rt :: RoutingTable) <- atomically defaultRoutingTable
 
   (delaySecs:myport:args) <- getArgs
   

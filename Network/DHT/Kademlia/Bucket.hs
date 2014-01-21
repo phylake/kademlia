@@ -10,13 +10,17 @@ import           Network.DHT.Kademlia.Util
 import           Util.Time
 import qualified Data.Vector as V
 
+-- | Ensure [kMinRange, kMaxRange)
+idInRange :: (Ord a) => a -> a -> a -> Bool
+idInRange id min max = min <= id && id < max
+
 -- | Psuedo code for 2.4
 -- given this node's id ID and a new peer C
 --
 -- > function ADD_PEER()
 -- >   get k-bucket B for C
--- >   if B.length < k then add C to tail
--- >   else if C is in B then move C to tail
+-- >   if C is in B then move C to tail
+-- >   else if B.length < k then add C to tail
 -- >   else
 -- >     if B.minRange <= ID && ID < B.maxRange then SPLIT() and ADD_PEER()
 -- >     else ignore C
@@ -31,21 +35,20 @@ addPeerLoop :: Int -- ^ number of times this function has called itself
             -> RoutingTable
             -> Peer -- ^ other node
             -> IO (Either String ())
-addPeerLoop xcalled this rt that
+addPeerLoop xcalled this kbuckets that
   | xcalled > 1 = return $ Left "infinite loop would occur"
   | this == that = return $ Right ()
   | otherwise = do
       now <- epochNow
       e <- atomically $ do
-        kbuckets <- readTVar rt -- (V.Vector (TVar KBucket))
         mKB <- findKBucket that kbuckets
         case mKB of
           Nothing -> return $ Left $ "no k-bucket found for [" ++ show that ++ "]"
           Just (kb@KBucket{..}, routeIdx) ->
             case V.findIndex ((==) that . fst) kContent of
-              Just peerIdx -> do
+              Just thatIdx -> do
                 -- TODO sort here or before use
-                let kb' = kb {kContent = kContent // [(peerIdx, (that, now))]}
+                let kb' = kb {kContent = kContent // [(thatIdx, (that, now))]}
                 writeTVar (kbuckets ! routeIdx) kb'
                 return $ Right False
               Nothing -> if V.length kContent < systemK
@@ -54,12 +57,12 @@ addPeerLoop xcalled this rt that
                   writeTVar (kbuckets ! routeIdx) kb'
                   return $ Right False
                 else do
-                  splitKBucket routeIdx rt
+                  splitKBucket routeIdx kbuckets
                   return $ Right True
       case e of
         Left err -> return $ Left err
         Right False -> return $ Right ()
-        Right True -> addPeerLoop (xcalled+1) this rt that
+        Right True -> addPeerLoop (xcalled+1) this kbuckets that
 
 findKBucket :: Peer -- ^ the peer to find
             -> V.Vector (TVar KBucket)
@@ -69,60 +72,42 @@ findKBucket (Peer key _) vec = loop (V.length vec - 1) where
     | idx < 0 = return Nothing
     | otherwise = do
         kb@(KBucket{..}) <- readTVar $ vec ! idx
-        if kMinRange <= key && key < kMaxRange
+        if idInRange key kMinRange kMaxRange
           then return $ Just (kb, idx)
           else loop (idx - 1)
 
 splitKBucket :: Int -- ^ Index of bucket to split
              -> RoutingTable
              -> STM ()
-splitKBucket idx rt = do
-  kbuckets <- readTVar rt
-  KBucket{..} <- readTVar $ kbuckets ! idx
-  --let (l,r) = V.foldl (splitFold newMinRange) (V.empty, V.empty) kContent
-  --let (left, right) = V.splitAt newMinRange kContent
-  --writeTVar rt $ kbuckets // [()] V.concat [left, new, right]
+splitKBucket idx kbuckets = do
+  kb <- readTVar (kbuckets ! idx)
+  let (kbl, kbr) = splitKBucketImpl kb
+  writeTVar (kbuckets !  idx     ) kbl
+  writeTVar (kbuckets ! (idx + 1)) kbr
   return ()
 
 splitKBucketImpl :: KBucket -> (KBucket, KBucket)
 splitKBucketImpl KBucket{..} = (lBucket, rBucket)
   where
-    newMinRange = kMaxRange - (kMaxRange - kMinRange)/2
+    kMidRange = floor $ kMaxRange - (kMaxRange - kMinRange)/2
     
-    lBucket = KBucket {kContent = lContents, kMinRange = 0, kMaxRange = 0}
-    rBucket = KBucket {kContent = rContents, kMinRange = 0, kMaxRange = 0}
+    lBucket = defaultKBucket {
+      kContent = lContent
+    , kMinRange = kMinRange
+    , kMaxRange = kMidRange
+    }
+    rBucket = defaultKBucket {
+      kContent = rContent
+    , kMinRange = kMidRange
+    , kMaxRange = kMaxRange
+    }
     
-    (lContents, rContents) = V.foldl splitFold (V.empty, V.empty) kContent
+    (lContent, rContent) = V.foldl splitFold (V.empty, V.empty) kContent
 
     splitFold :: (V.Vector (Peer, LastSeen), V.Vector (Peer, LastSeen))
               -> (Peer, LastSeen)
               -> (V.Vector (Peer, LastSeen), V.Vector (Peer, LastSeen))
     splitFold (l,r) t@(Peer nodeId _, _) =
-      if nodeId > newMinRange
-        then (V.cons t l, r)
-        else (l, V.cons t r)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+      if idInRange nodeId kMidRange kMaxRange
+        then (l, V.snoc r t) -- snoc on left fold
+        else (V.snoc l t, r)
