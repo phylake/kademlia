@@ -1,6 +1,5 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
---module Network.DHT.Kademlia.Bucket (addPeer, findKBucket, splitKBucket) where
 module Network.DHT.Kademlia.Bucket where
 
 import           Control.Concurrent.STM
@@ -35,7 +34,7 @@ addPeerLoop :: Int -- ^ number of times this function has called itself
             -> RoutingTable
             -> Peer -- ^ other node
             -> IO (Either String ())
-addPeerLoop xcalled this kbuckets that
+addPeerLoop xcalled this@(Peer thisNodeId _) kbuckets that
   | xcalled > 1 = return $ Left "infinite loop would occur"
   | this == that = return $ Right ()
   | otherwise = do
@@ -56,9 +55,11 @@ addPeerLoop xcalled this kbuckets that
                   let kb' = kb {kContent = V.snoc kContent (that, now)}
                   writeTVar (kbuckets ! routeIdx) kb'
                   return $ Right False
-                else do
-                  splitKBucket routeIdx kbuckets
-                  return $ Right True
+                else if idInRange thisNodeId kMinRange kMaxRange
+                  then do
+                    splitKBucket routeIdx kbuckets
+                    return $ Right True
+                  else return $ Right False
       case e of
         Left err -> return $ Left err
         Right False -> return $ Right ()

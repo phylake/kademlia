@@ -68,6 +68,8 @@ data Peer = Peer {
 
 -- | range is [kMinRange, kMaxRange)
 data KBucket = KBucket {
+                         -- TODO how is lock optimism affected for reads on Peer
+                         --      when there are frequent writes to LastSeen
                          kContent :: V.Vector (Peer, LastSeen) -- ^ Sorted by LastSeen
                        , kMinRange :: Double
                        , kMaxRange :: Double
