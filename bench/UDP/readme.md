@@ -5,5 +5,5 @@ Reproducing these results
     ./UDPServer 3001
     ./UDPServer 3002
     
-    ghc -O2 -threaded -rtsopts UDPBench
-    ./UDPBench -o UDPBench.html +RTS -A500M
+    ghc -O2 -threaded -rtsopts UDPClient
+    ./UDPClient -o UDPClient.html +RTS -A500M
