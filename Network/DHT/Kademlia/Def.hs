@@ -1,4 +1,5 @@
 {-# LANGUAGE CPP #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-module Network.DHT.Kademlia.Def (
   k
 , bits
@@ -14,12 +15,16 @@
 module Network.DHT.Kademlia.Def where
 
 import           Control.Concurrent.STM
+import           Control.Monad
 import           Data.Binary
+import           Data.Bits
 import           Data.Vector ((!))
 import           Network.Socket (SockAddr(..))
 import           Util.Integral
+import           Util.Words
 import qualified Data.ByteString as B
 import qualified Data.Vector as V
+import qualified Data.HashTable.IO as H
 
 {-
 k-bucket = list = [(IP, Port, NodeId)]
@@ -43,6 +48,9 @@ systemBits = 3
 systemBits = 160
 #endif
 
+systemBytes :: Int
+systemBytes = fromIntegral $ systemBits/8
+
 -- | IPv4 minimum reassembly buffer size = 576 bytes
 -- minus IP header = 20 bytes
 -- minus UDP header = 8 bytes
@@ -50,18 +58,39 @@ systemBits = 160
 recvBytes :: Int
 recvBytes = 548
 
-data Hooks = Hooks {
-                     hkPing :: (Int -> IO ())
-                   , hkPing2 :: (Int -> IO ())
-                   }
+data KademliaEnv = KademliaEnv {
+                                 ds :: DataStore  
+                               --, rpc :: RPCHooks  
+                               }
 
-type DataStore = (B.ByteString -> IO (Maybe B.ByteString))
+defaultEnv :: IO KademliaEnv
+{-defaultEnv = liftM2 KademliaEnv
+               defaultDataStore
+               (atomically defaultRoutingTable)-}
+defaultEnv = liftM KademliaEnv defaultDataStore
 
+data DataStore = DataStore {
+                             dsGet :: B.ByteString -- ^ key
+                                   -> IO (Maybe B.ByteString) -- ^ maybe value
+                           , dsSet :: B.ByteString -- ^ key
+                                   -> B.ByteString -- ^ value
+                                   -> IO ()
+                           }
+
+defaultDataStore :: IO DataStore
+defaultDataStore = do
+  (ht :: H.BasicHashTable B.ByteString B.ByteString) <- H.new
+  return $ DataStore {
+    dsSet = H.insert ht
+  , dsGet = H.lookup ht
+  }
+
+type NodeId = Key
 type Key = Double
 type LastSeen = Double
 
 data Peer = Peer {
-                   nodeId :: Double
+                   nodeId :: NodeId
                  , location :: SockAddr
                  }
                  deriving (Show, Eq)
@@ -81,6 +110,9 @@ defaultKBucket = KBucket {kContent = V.empty, kMinRange = 0, kMaxRange = 0}
 -- | Length of `systemBits`
 type RoutingTable = V.Vector (TVar KBucket)
 
+-- | Preallocated vector of length systemBits where
+-- indices 1 through systemBits - 1 are buckets needing configured to split into
+-- and the bucket at index 0 contains the entire bit range
 defaultRoutingTable :: STM RoutingTable
 defaultRoutingTable = do
   rt <- V.replicateM systemBits' (newTVar defaultKBucket)
@@ -89,16 +121,47 @@ defaultRoutingTable = do
   where
     systemBits' = fromIntegral systemBits
 
+data RPCHooks = RPCHooks {
+                           foundNode :: Peer -> IO ()
+                         , ping :: Peer -> IO ()
+                         }
+
+data RPCEnvelope = RPCEnvelope NodeId RPC
+
 data RPC = RPC_UNKNOWN
          | RPC_PING
-         | RPC_STORE
+         | RPC_STORE B.ByteString -- ^ key
+                     Word32 -- ^ sequence number
+                     Word32 -- ^ total chunks
+                     Word16 -- ^ length of chunk to come
+                     B.ByteString -- ^ chunk of data
          | RPC_FIND_NODE Peer
+         | RPC_FOUND_NODE Peer
          | RPC_FIND_VALUE
-         deriving (Show)
+         deriving (Show, Eq)
 
 instance Binary RPC where
   put (RPC_PING) = putWord8 1
-  put (RPC_STORE) = putWord8 2
+  put (RPC_STORE k n m l bs) = do
+    putWord8 2
+    mapM putWord8 $ B.unpack k
+    
+    -- TODO instance Binary Word32 doesn't work as expected
+    putWord8 $ fromIntegral $ n `shiftR` 24
+    putWord8 $ fromIntegral $ n `shiftR` 16
+    putWord8 $ fromIntegral $ n `shiftR` 8
+    putWord8 $ fromIntegral $ n `shiftR` 0
+    
+    putWord8 $ fromIntegral $ m `shiftR` 24
+    putWord8 $ fromIntegral $ m `shiftR` 16
+    putWord8 $ fromIntegral $ m `shiftR` 8
+    putWord8 $ fromIntegral $ m `shiftR` 0
+    
+    putWord8 $ fromIntegral $ l `shiftR` 8
+    putWord8 $ fromIntegral $ l `shiftR` 0
+    
+    mapM putWord8 $ B.unpack bs
+    return ()
   put (RPC_FIND_NODE _) = putWord8 3
   put (RPC_FIND_VALUE) = putWord8 4
   
@@ -106,7 +169,14 @@ instance Binary RPC where
     w <- getWord8
     case w of
       1 -> return $ RPC_PING
-      2 -> return $ RPC_STORE
+      2 -> do
+        key <- replicateM systemBytes getWord8 >>= return . B.pack
+        (n :: Word32) <- replicateM 4 getWord8 >>= return . toWord32
+        (m :: Word32) <- replicateM 4 getWord8 >>= return . toWord32
+        (l :: Word16) <- replicateM 2 getWord8 >>= return . toWord16
+        chunk <- replicateM (fromIntegral l) getWord8 >>= return . B.pack
+        return $ RPC_STORE key n m l chunk
       --3 -> return $ RPC_FIND_NODE $ Peer 0 
       4 -> return $ RPC_FIND_VALUE
       otherwise -> return RPC_UNKNOWN
+    where

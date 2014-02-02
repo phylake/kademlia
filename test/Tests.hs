@@ -2,13 +2,12 @@
 module Main where
 
 import           BucketTests
+import           SerializationTests
+
 import           Control.Concurrent.STM
-import           Control.Monad
-import           Data.Vector ((!), (//))
+import           Control.Monad (liftM2)
 import           Network.DHT.Kademlia.Def
-import           Network.Socket
 import           Test.Hspec
-import           Util.Time
 import qualified Data.Vector as V
 
 main :: IO ()
@@ -18,6 +17,7 @@ main = hspec $
     tVarAssumptions
     kBucket
     routingTable
+    rpcSerialization
 
 tVarAssumptions :: Spec
 tVarAssumptions = describe "TVar" $ do
