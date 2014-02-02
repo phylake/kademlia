@@ -17,7 +17,7 @@ main = do
   sockREP <- socket ctx Rep
   bind sockREP "tcp://127.0.0.1:3001"
   receive sockREP
-  send sockREP [] "that was dramatic"
+  send sockREP [] ""
   close sockREP
 
   let io = do {
@@ -26,7 +26,7 @@ main = do
   
   defaultMain [ bgroup "zmq PUB-SUB" [
                   bench "only" $ whnfIO io
-                ]  
+                ]
               ]
   close sock
   shutdown ctx
