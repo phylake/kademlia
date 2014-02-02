@@ -26,14 +26,14 @@ Notice this is the opposite invocation order as REQ_REP because the PUB/SUB
 needs to synchronize. Also you can omit `-L. -optl-Wl,-rpath,'$ORIGIN'`
 if your ghc is smart enough to find libzmq.so
 
-    # build server
+    # build client benchmark
     ghc -O2 -threaded -rtsopts -lzmq -L. -optl-Wl,-rpath,'$ORIGIN' ZMQClient
 
-    # start server
+    # start client benchmark
     ./ZMQClient -o ZMQClient.html +RTS -N -A500M
 
-    # build client benchmark
+    # build server
     ghc -O2 -threaded -rtsopts -lzmq -L. -optl-Wl,-rpath,'$ORIGIN' ZMQServer
     
-    # start client benchmark
+    # start server
     ./ZMQServer +RTS -N -A500M
