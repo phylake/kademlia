@@ -71,7 +71,7 @@ runKademlia ds = do
         RPC_PING -> do
           send "PONG"
           putStrLn $ "received: " ++ (show rpc)
-        RPC_STORE -> do
+        RPC_STORE _ _ _ _ _ -> do
           return ()
         RPC_FIND_NODE _ -> do
           return ()
