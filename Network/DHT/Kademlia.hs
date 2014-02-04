@@ -20,6 +20,7 @@ import           Network.Socket
 import           System.Environment
 import           System.Posix.Signals (installHandler, Handler(Catch), sigINT, sigTERM)
 import           System.Timeout
+import           Util.Integral
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Char8 as BC
 import qualified Data.ByteString.Lazy as BL
@@ -36,9 +37,11 @@ wait mv = do
   if c == cthreads
     then return ()
     else wait mv
+testKey :: B.ByteString
+testKey = BC.pack "c3969900f0616ef5943a"
 
 runKademlia :: KademliaEnv -> IO ()
-runKademlia env = do
+runKademlia env@(KademliaEnv{..}) = do
   -- init networking
   -- apparently this is also needed on unix without -threaded
   -- http://hackage.haskell.org/package/network-2.4.0.1/docs/Network-Socket.html#v:withSocketsDo
@@ -47,7 +50,6 @@ runKademlia env = do
   -- "0x" ++ `cat /dev/urandom | tr -cd 'a-f0-9' | head -c 32`
 
   (rt :: RoutingTable) <- atomically defaultRoutingTable
-  --ctx <- zmqContext
 
   (delaySecs:myport:args) <- getArgs
   
@@ -61,10 +63,13 @@ runKademlia env = do
       void . replicateM cthreads . forkIO $ do
         threadDelay $ secToMicro $ read delaySecs
         let yourSockAddr = SockAddrInet (PortNum $ read yourport) addr
-        forM_ [0..1] $ \i -> do
-          let bs = BL.toStrict $ encode $ RPC_STORE "c3969900f0616ef5943a" (fromIntegral i) 2 9 "abcd efgh"
-          NB.sendAllTo sock bs yourSockAddr
+        forM_ [0..0] $ \i -> do
+          --let bs = BL.toStrict $ encode $ RPC_STORE "c3969900f0616ef5943a" (fromIntegral i) 2 9 "abcd efgh"
+          --NB.sendAllTo sock bs yourSockAddr
           --NB.sendAllTo sock "PING" yourSockAddr
+          --mv <- newMVar ds
+          --rpcStore sock mv testKey $ Peer 0 yourSockAddr
+          return ()
         c <- takeMVar mv
         putMVar mv $ c+1
       wait mv
@@ -80,15 +85,15 @@ runKademlia env = do
       bind sock mySockAddr
       caps <- getNumCapabilities
       --void $ replicateM (caps - 1) $ forkIO $ loop mvStoreHT sock
-      loop mvStoreHT sock
+      loop env mvStoreHT sock
 
   return ()
 
 type StoreHT = H.BasicHashTable B.ByteString (TVar (V.Vector B.ByteString))
 type MVStoreHT = MVar StoreHT
 
-loop :: MVStoreHT -> Socket -> IO ()
-loop mvStoreHT sock = forever $ do
+loop :: KademliaEnv -> MVStoreHT -> Socket -> IO ()
+loop (KademliaEnv{..}) mvStoreHT sock = forever $ do
   (bs, sockAddr) <- NB.recvFrom sock recvBytes
   forkIO $ do
     let send = flip (NB.sendAllTo sock) sockAddr
@@ -98,18 +103,16 @@ loop mvStoreHT sock = forever $ do
         --send "PONG"
         putStrLn $ "received: " ++ (show rpc)
       (RPC_STORE k n m l bs) -> do
-        storeHT <- takeMVar mvStoreHT -- TAKE MVar
+        -- TODO only lock on write?
+        storeHT <- takeMVar mvStoreHT -- TAKE
         mtvVec <- H.lookup storeHT k
-
         tvVec <- case mtvVec of
+          Just tvVec -> return tvVec
           Nothing -> do
             tvVec <- atomically $ newTVar $ V.replicate (fromIntegral m) B.empty
             H.insert storeHT k tvVec
-            putMVar mvStoreHT storeHT -- PUT MVar
             return tvVec
-          Just tvVec -> do
-            putMVar mvStoreHT storeHT -- PUT MVar
-            return tvVec
+        putMVar mvStoreHT storeHT -- PUT
 
         mAssm <- atomically $ do
           vec <- readTVar tvVec
@@ -120,11 +123,13 @@ loop mvStoreHT sock = forever $ do
         case mAssm of
           Nothing -> return ()
           Just value -> do
-            putStrLn $ "have value [" ++ BC.unpack value ++ "]"
-            -- TODO does H.delete need a lock?
-            storeHT <- takeMVar mvStoreHT -- TAKE MVar
+            storeHT <- takeMVar mvStoreHT -- TAKE
             H.delete storeHT k
-            putMVar mvStoreHT storeHT -- PUT MVar
+            putMVar mvStoreHT storeHT -- PUT
+            
+            dataStore@(DataStore{..}) <- takeMVar mvDataStore -- TAKE
+            dsSet k value
+            putMVar mvDataStore dataStore -- PUT
         return ()
       RPC_FIND_NODE _ -> do
         return ()
@@ -134,8 +139,23 @@ loop mvStoreHT sock = forever $ do
         putStrLn $ "received: " ++ (BC.unpack bs)
         return ()
 
+rpcStore :: Socket
+         -> MVar DataStore
+         -> B.ByteString -- ^ key
+         -> Peer
+         -> IO ()
+rpcStore sock mvDataStore key (Peer{..}) = do
+  dataStore@(DataStore{..}) <- takeMVar mvDataStore
+  mVal <- dsGet key
+  putMVar mvDataStore dataStore
+  case mVal of
+    Nothing -> return ()
+    Just v -> mapM_ send $ storeChunks key v
+  where
+    send rpc = NB.sendAllTo sock (BL.toStrict $ encode rpc) location
+
 -- TODO validate checksum
 tryReassemble :: V.Vector B.ByteString -> Maybe B.ByteString
-tryReassemble v = if V.any (== B.empty) v
+tryReassemble v = if V.null v || V.any (== B.empty) v
   then Nothing
   else Just $ V.foldl1 B.append v

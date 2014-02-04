@@ -1,4 +1,5 @@
 {-# LANGUAGE CPP #-}
+{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-module Network.DHT.Kademlia.Def (
   k
@@ -14,6 +15,7 @@
 ) where-}
 module Network.DHT.Kademlia.Def where
 
+import           Control.Concurrent
 import           Control.Concurrent.STM
 import           Control.Monad
 import           Data.Binary
@@ -58,16 +60,24 @@ systemBytes = fromIntegral $ systemBits/8
 recvBytes :: Int
 recvBytes = 548
 
+-- | >   recvBytes
+-- | > - rpc header
+-- | > - key length
+-- | > - sequence number
+-- | > - total chunks
+chunkBytes :: Int
+chunkBytes = recvBytes - 1 - systemBytes - 4 - 4 - 2
+
 data KademliaEnv = KademliaEnv {
-                                 ds :: DataStore  
-                               --, rpc :: RPCHooks  
+                                 mvDataStore :: MVar DataStore
+                               --, rpc :: RPCHooks
                                }
 
 defaultEnv :: IO KademliaEnv
 {-defaultEnv = liftM2 KademliaEnv
                defaultDataStore
                (atomically defaultRoutingTable)-}
-defaultEnv = liftM KademliaEnv defaultDataStore
+defaultEnv = liftM KademliaEnv (defaultDataStore >>= newMVar)
 
 data DataStore = DataStore {
                              dsGet :: B.ByteString -- ^ key
@@ -179,4 +189,3 @@ instance Binary RPC where
       --3 -> return $ RPC_FIND_NODE $ Peer 0 
       4 -> return $ RPC_FIND_VALUE
       otherwise -> return RPC_UNKNOWN
-    where

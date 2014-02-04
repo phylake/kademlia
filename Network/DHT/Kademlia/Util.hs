@@ -2,10 +2,14 @@
 module Network.DHT.Kademlia.Util where
 
 import           Control.Concurrent.STM
+import           Data.Binary
+import           Data.Word
 import           GHC.IO.Handle
 import           GHC.IO.Handle.FD
 import           Network.DHT.Kademlia.Def
 import           Util.Integral
+import qualified Data.ByteString as B
+import qualified Data.ByteString.Lazy as BL
 import qualified Data.Vector as V
 
 pStdOut = hPutStr stdout
@@ -22,3 +26,19 @@ dumpRT kbuckets = do
 
 secToMicro :: Int -> Int
 secToMicro t = t * fromIntegral (10 ** 6 :: Double)
+
+storeChunks :: B.ByteString -> B.ByteString -> [RPC]
+storeChunks k v = loop 0 k v
+  where
+    totalChunks :: Word32
+    totalChunks = fromIntegral
+                $ ceiling
+                $ (fromIntegral $ B.length v) / (fromIntegral chunkBytes)
+
+    loop i k v
+      | B.null v = []
+      | otherwise = rpc : loop (i+1) k rest
+      where
+        rpc = RPC_STORE k i totalChunks chunkLen chunk
+        (chunk, rest) = B.splitAt chunkBytes v
+        chunkLen = fromIntegral $ B.length chunk
