@@ -21,7 +21,7 @@ import           Control.Monad
 import           Data.Binary
 import           Data.Bits
 import           Data.Vector ((!))
-import           Network.Socket (SockAddr(..))
+import           Network.Socket (SockAddr(..), PortNumber(..))
 import           Util.Integral
 import           Util.Words
 import qualified Data.ByteString as B
@@ -105,6 +105,24 @@ data Peer = Peer {
                  }
                  deriving (Show, Eq)
 
+instance Binary Peer where
+  put (Peer{..}) = do
+    put nodeId
+    put location
+  get = do
+    nodeId <- get
+    location <- get
+    return Peer{..}
+
+instance Binary SockAddr where
+  put (SockAddrInet (PortNum portNumber) hostAddress) = do
+    put portNumber
+    put hostAddress
+  get = do
+    portNumber <- get
+    hostAddress <- get
+    return $ SockAddrInet (PortNum portNumber) hostAddress
+
 -- | range is [kMinRange, kMaxRange)
 data KBucket = KBucket {
                          -- TODO how is lock optimism affected for reads on Peer
@@ -139,7 +157,7 @@ data RPCHooks = RPCHooks {
 data RPCEnvelope = RPCEnvelope NodeId RPC
 
 data RPC = RPC_UNKNOWN
-         | RPC_PING
+         | RPC_PING Peer
          | RPC_STORE B.ByteString -- ^ key
                      Word32 -- ^ sequence number
                      Word32 -- ^ total chunks
@@ -151,7 +169,9 @@ data RPC = RPC_UNKNOWN
          deriving (Show, Eq)
 
 instance Binary RPC where
-  put (RPC_PING) = putWord8 1
+  put (RPC_PING peer) = do
+    putWord8 1
+    put peer
   put (RPC_STORE k n m l bs) = do
     putWord8 2
     mapM putWord8 $ B.unpack k
@@ -178,7 +198,7 @@ instance Binary RPC where
   get = do
     w <- getWord8
     case w of
-      1 -> return $ RPC_PING
+      1 -> liftM RPC_PING get
       2 -> do
         key <- replicateM systemBytes getWord8 >>= return . B.pack
         (n :: Word32) <- replicateM 4 getWord8 >>= return . toWord32

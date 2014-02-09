@@ -42,3 +42,9 @@ storeChunks k v = loop 0 k v
         rpc = RPC_STORE k i totalChunks chunkLen chunk
         (chunk, rest) = B.splitAt chunkBytes v
         chunkLen = fromIntegral $ B.length chunk
+
+-- TODO validate checksum
+tryReassemble :: V.Vector B.ByteString -> Maybe B.ByteString
+tryReassemble v = if V.null v || V.any (== B.empty) v
+  then Nothing
+  else Just $ V.foldl1 B.append v

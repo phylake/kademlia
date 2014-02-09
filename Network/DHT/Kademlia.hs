@@ -85,24 +85,24 @@ runKademlia env@(KademliaEnv{..}) = do
       bind sock mySockAddr
       caps <- getNumCapabilities
       --void $ replicateM (caps - 1) $ forkIO $ loop mvStoreHT sock
-      loop env mvStoreHT sock
+      loop env rt mvStoreHT sock
 
   return ()
 
 type StoreHT = H.BasicHashTable B.ByteString (TVar (V.Vector B.ByteString))
 type MVStoreHT = MVar StoreHT
 
-loop :: KademliaEnv -> MVStoreHT -> Socket -> IO ()
-loop (KademliaEnv{..}) mvStoreHT sock = forever $ do
+loop :: KademliaEnv -> RoutingTable -> MVStoreHT -> Socket -> IO ()
+loop (KademliaEnv{..}) rt mvStoreHT sock = forever $ do
   (bs, sockAddr) <- NB.recvFrom sock recvBytes
   forkIO $ do
     let send = flip (NB.sendAllTo sock) sockAddr
     let rpc :: RPC = decode $ BL.fromStrict bs
     case rpc of
-      RPC_PING -> do
-        --send "PONG"
-        putStrLn $ "received: " ++ (show rpc)
-      (RPC_STORE k n m l bs) -> do
+      RPC_PING peer -> do
+        -- TODO this peer
+        void $ addPeer peer rt peer
+      RPC_STORE k n m l bs -> do
         -- TODO only lock on write?
         storeHT <- takeMVar mvStoreHT -- TAKE
         mtvVec <- H.lookup storeHT k
@@ -150,12 +150,8 @@ rpcStore sock mvDataStore key (Peer{..}) = do
   putMVar mvDataStore dataStore
   case mVal of
     Nothing -> return ()
-    Just v -> mapM_ send $ storeChunks key v
+    Just v -> do
+      mapM_ send $ storeChunks key v
+      -- TODO send PING to update receiving node's k-bucket
   where
     send rpc = NB.sendAllTo sock (BL.toStrict $ encode rpc) location
-
--- TODO validate checksum
-tryReassemble :: V.Vector B.ByteString -> Maybe B.ByteString
-tryReassemble v = if V.null v || V.any (== B.empty) v
-  then Nothing
-  else Just $ V.foldl1 B.append v
