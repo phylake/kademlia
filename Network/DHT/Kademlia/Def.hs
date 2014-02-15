@@ -1,4 +1,5 @@
 {-# LANGUAGE CPP #-}
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-module Network.DHT.Kademlia.Def (
@@ -15,11 +16,14 @@
 ) where-}
 module Network.DHT.Kademlia.Def where
 
+import           Control.Applicative
 import           Control.Concurrent
 import           Control.Concurrent.STM
 import           Control.Monad
+import           Data.Aeson
 import           Data.Binary
 import           Data.Bits
+import           Data.Text (Text(..))
 import           Data.Vector ((!))
 import           Network.Socket (SockAddr(..), PortNumber(..))
 import           Util.Integral
@@ -68,16 +72,16 @@ recvBytes = 548
 chunkBytes :: Int
 chunkBytes = recvBytes - 1 - systemBytes - 4 - 4 - 2
 
+type StoreHT = H.BasicHashTable B.ByteString (TVar (V.Vector B.ByteString))
+type MVStoreHT = MVar StoreHT
+
 data KademliaEnv = KademliaEnv {
                                  mvDataStore :: MVar DataStore
+                               , rt :: RoutingTable
+                               , mvStoreHT :: MVar StoreHT
+                               , thisPeer :: Peer
                                --, rpc :: RPCHooks
                                }
-
-defaultEnv :: IO KademliaEnv
-{-defaultEnv = liftM2 KademliaEnv
-               defaultDataStore
-               (atomically defaultRoutingTable)-}
-defaultEnv = liftM KademliaEnv (defaultDataStore >>= newMVar)
 
 data DataStore = DataStore {
                              dsGet :: B.ByteString -- ^ key
@@ -209,3 +213,30 @@ instance Binary RPC where
       --3 -> return $ RPC_FIND_NODE $ Peer 0 
       4 -> return $ RPC_FIND_VALUE
       otherwise -> return RPC_UNKNOWN
+
+data DataStoreType = Hedis
+                   | HashTables
+
+instance FromJSON DataStoreType where
+  parseJSON (Object v) = do
+    (t :: Text) <- v .: "type"
+    case t of
+      "hedis" -> return Hedis
+      "hashtables" -> return HashTables
+      _ -> mzero
+  parseJSON _ = mzero
+
+data Config = Config {
+                       cfgNodeId :: Text
+                     , cfgHost :: Text
+                     , cfgPort :: Text
+                     , cfgDSType :: DataStoreType
+                     }
+
+instance FromJSON Config where
+  parseJSON (Object v) = Config <$>
+    v .: "nodeId" <*>
+    (v .:? "host" .!= "127.0.0.1") <*>
+    (v .:? "port" .!= "3000") <*>
+    (v .:? "dataStore" .!= HashTables)
+  parseJSON _ = mzero

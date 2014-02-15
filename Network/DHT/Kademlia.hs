@@ -1,7 +1,7 @@
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 module Network.DHT.Kademlia (runKademlia) where
 
 import           Control.Concurrent
@@ -25,6 +25,7 @@ import qualified Data.ByteString as B
 import qualified Data.ByteString.Char8 as BC
 import qualified Data.ByteString.Lazy as BL
 import qualified Data.HashTable.IO as H
+import qualified Data.Text as T
 import qualified Data.Vector as V
 import qualified Network.Socket.ByteString as NB
 
@@ -37,27 +38,25 @@ wait mv = do
   if c == cthreads
     then return ()
     else wait mv
-testKey :: B.ByteString
-testKey = BC.pack "c3969900f0616ef5943a"
 
-runKademlia :: KademliaEnv -> IO ()
-runKademlia env@(KademliaEnv{..}) = do
+runKademlia :: Config -> IO ()
+runKademlia (Config{..}) = do
   -- init networking
   -- apparently this is also needed on unix without -threaded
   -- http://hackage.haskell.org/package/network-2.4.0.1/docs/Network-Socket.html#v:withSocketsDo
   withSocketsDo $ return ()
 
-  -- "0x" ++ `cat /dev/urandom | tr -cd 'a-f0-9' | head -c 32`
-
   (rt :: RoutingTable) <- atomically defaultRoutingTable
 
-  (delaySecs:myport:args) <- getArgs
-  
   sock <- socket AF_INET Datagram defaultProtocol
-  addr <- inet_addr "127.0.0.1"
-  let mySockAddr = SockAddrInet (PortNum $ read myport) addr
+  addr <- inet_addr $ T.unpack cfgHost
+  let mySockAddr = SockAddrInet (PortNum $ read $ T.unpack cfgPort) addr
+  let thisPeer = Peer (read $ T.unpack cfgNodeId) mySockAddr
   
-  case args of
+  mvDataStore <- defaultDataStore >>= newMVar
+  mvStoreHT <- H.new >>= newMVar
+
+  {-case args of
     (yourport:[]) -> do
       mv <- newMVar 0
       void . replicateM cthreads . forkIO $ do
@@ -85,23 +84,26 @@ runKademlia env@(KademliaEnv{..}) = do
       bind sock mySockAddr
       caps <- getNumCapabilities
       --void $ replicateM (caps - 1) $ forkIO $ loop mvStoreHT sock
-      loop env rt mvStoreHT sock
+      loop (KademliaEnv{..}) sock-}
+  
+  bind sock mySockAddr
+  putStrLn $ "Kademlia bound to " ++ T.unpack cfgPort
+  caps <- getNumCapabilities
+  putStrLn $ "num capabilities [" ++ show caps ++ "]"
+  --void $ replicateM (caps - 1) $ forkIO $ loop mvStoreHT sock
+  loop (KademliaEnv{..}) sock
 
   return ()
 
-type StoreHT = H.BasicHashTable B.ByteString (TVar (V.Vector B.ByteString))
-type MVStoreHT = MVar StoreHT
-
-loop :: KademliaEnv -> RoutingTable -> MVStoreHT -> Socket -> IO ()
-loop (KademliaEnv{..}) rt mvStoreHT sock = forever $ do
+loop :: KademliaEnv -> Socket -> IO ()
+loop (KademliaEnv{..}) sock = forever $ do
   (bs, sockAddr) <- NB.recvFrom sock recvBytes
   forkIO $ do
     let send = flip (NB.sendAllTo sock) sockAddr
     let rpc :: RPC = decode $ BL.fromStrict bs
     case rpc of
-      RPC_PING peer -> do
-        -- TODO this peer
-        void $ addPeer peer rt peer
+      RPC_PING thatPeer -> do
+        void $ addPeer thisPeer rt thatPeer
       RPC_STORE k n m l bs -> do
         -- TODO only lock on write?
         storeHT <- takeMVar mvStoreHT -- TAKE
@@ -151,7 +153,10 @@ rpcStore sock mvDataStore key (Peer{..}) = do
   case mVal of
     Nothing -> return ()
     Just v -> do
-      mapM_ send $ storeChunks key v
+      -- send first chunk last to optimize tryReassemble
+      let (chunk:chunks) = storeChunks key v
+      mapM_ send chunks
+      send chunk
       -- TODO send PING to update receiving node's k-bucket
   where
     send rpc = NB.sendAllTo sock (BL.toStrict $ encode rpc) location
