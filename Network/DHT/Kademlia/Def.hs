@@ -21,6 +21,7 @@ import           Control.Concurrent
 import           Control.Concurrent.STM
 import           Control.Monad
 import           Data.Aeson
+import           Data.Time.Clock
 import           Data.Binary
 import           Data.Bits
 import           Data.Text (Text(..))
@@ -73,13 +74,14 @@ chunkBytes :: Int
 chunkBytes = recvBytes - 1 - systemBytes - 4 - 4 - 2
 
 type StoreHT = H.BasicHashTable B.ByteString (TVar (V.Vector B.ByteString))
-type MVStoreHT = MVar StoreHT
 
 data KademliaEnv = KademliaEnv {
-                                 mvDataStore :: MVar DataStore
+                                 cfg :: Config
+                               , mvDataStore :: MVar DataStore
                                , rt :: RoutingTable
                                , mvStoreHT :: MVar StoreHT
                                , thisPeer :: Peer
+                               , pingREQs :: MVar (V.Vector (UTCTime, Peer))
                                --, rpc :: RPCHooks
                                }
 
@@ -161,23 +163,27 @@ data RPCHooks = RPCHooks {
 data RPCEnvelope = RPCEnvelope NodeId RPC
 
 data RPC = RPC_UNKNOWN
-         | RPC_PING Peer
-         | RPC_STORE B.ByteString -- ^ key
-                     Word32 -- ^ sequence number
-                     Word32 -- ^ total chunks
-                     Word16 -- ^ length of chunk to come
-                     B.ByteString -- ^ chunk of data
+         | RPC_PING_REQ Peer
+         | RPC_PING_REP Peer
+         | RPC_STORE_REQ B.ByteString -- ^ key
+                         Word32 -- ^ sequence number
+                         Word32 -- ^ total chunks
+                         Word16 -- ^ length of chunk to come
+                         B.ByteString -- ^ chunk of data
          | RPC_FIND_NODE Peer
          | RPC_FOUND_NODE Peer
          | RPC_FIND_VALUE
          deriving (Show, Eq)
 
 instance Binary RPC where
-  put (RPC_PING peer) = do
+  put (RPC_PING_REQ peer) = do
     putWord8 1
     put peer
-  put (RPC_STORE k n m l bs) = do
+  put (RPC_PING_REP peer) = do
     putWord8 2
+    put peer
+  put (RPC_STORE_REQ k n m l bs) = do
+    putWord8 3
     mapM putWord8 $ B.unpack k
     
     -- TODO instance Binary Word32 doesn't work as expected
@@ -196,22 +202,23 @@ instance Binary RPC where
     
     mapM putWord8 $ B.unpack bs
     return ()
-  put (RPC_FIND_NODE _) = putWord8 3
-  put (RPC_FIND_VALUE) = putWord8 4
+  put (RPC_FIND_NODE _) = putWord8 4
+  put (RPC_FIND_VALUE) = putWord8 5
   
   get = do
     w <- getWord8
     case w of
-      1 -> liftM RPC_PING get
-      2 -> do
+      1 -> liftM RPC_PING_REQ get
+      2 -> liftM RPC_PING_REP get
+      3 -> do
         key <- replicateM systemBytes getWord8 >>= return . B.pack
         (n :: Word32) <- replicateM 4 getWord8 >>= return . toWord32
         (m :: Word32) <- replicateM 4 getWord8 >>= return . toWord32
         (l :: Word16) <- replicateM 2 getWord8 >>= return . toWord16
         chunk <- replicateM (fromIntegral l) getWord8 >>= return . B.pack
-        return $ RPC_STORE key n m l chunk
-      --3 -> return $ RPC_FIND_NODE $ Peer 0 
-      4 -> return $ RPC_FIND_VALUE
+        return $ RPC_STORE_REQ key n m l chunk
+      --4 -> return $ RPC_FIND_NODE $ Peer 0 
+      5 -> return $ RPC_FIND_VALUE
       otherwise -> return RPC_UNKNOWN
 
 data DataStoreType = Hedis
@@ -229,7 +236,9 @@ instance FromJSON DataStoreType where
 data Config = Config {
                        cfgNodeId :: Text
                      , cfgHost :: Text
-                     , cfgPort :: Text
+                     , cfgPort :: Word16
+                     , cfgRoutingTablePath :: Text
+                     , cfgPingReqTimeoutUs :: Int
                      , cfgDSType :: DataStoreType
                      }
 
@@ -237,6 +246,8 @@ instance FromJSON Config where
   parseJSON (Object v) = Config <$>
     v .: "nodeId" <*>
     (v .:? "host" .!= "127.0.0.1") <*>
-    (v .:? "port" .!= "3000") <*>
+    (v .:? "port" .!= 3000) <*>
+    (v .: "routingTablePath") <*>
+    (v .:? "pingReqTimeout" .!= 3000) <*>
     (v .:? "dataStore" .!= HashTables)
   parseJSON _ = mzero

@@ -26,4 +26,6 @@ main = do
     otherwise -> usage
 
 usage :: IO ()
-usage = return ()
+usage = do
+  putStrLn ""
+  exitFailure

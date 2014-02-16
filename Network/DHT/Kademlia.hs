@@ -14,6 +14,7 @@ import           Data.Vector ((!), (//))
 import           Data.Word
 import           GHC.Conc.Sync (getNumCapabilities)
 import           Network.DHT.Kademlia.Bucket
+import           Network.DHT.Kademlia.Workers
 import           Network.DHT.Kademlia.Def
 import           Network.DHT.Kademlia.Util
 import           Network.Socket
@@ -40,22 +41,28 @@ wait mv = do
     else wait mv
 
 runKademlia :: Config -> IO ()
-runKademlia (Config{..}) = do
+runKademlia cfg@(Config{..}) = do
   -- init networking
   -- apparently this is also needed on unix without -threaded
   -- http://hackage.haskell.org/package/network-2.4.0.1/docs/Network-Socket.html#v:withSocketsDo
   withSocketsDo $ return ()
 
+  -- TODO 1. load periodically saved routing table
+  --      2. fall back to table specified in cfgRoutingTablePath
+  --      3. PING each least recently seen node
   (rt :: RoutingTable) <- atomically defaultRoutingTable
 
   sock <- socket AF_INET Datagram defaultProtocol
   addr <- inet_addr $ T.unpack cfgHost
-  let mySockAddr = SockAddrInet (PortNum $ read $ T.unpack cfgPort) addr
+  let mySockAddr = SockAddrInet (PortNum cfgPort) addr
   let thisPeer = Peer (read $ T.unpack cfgNodeId) mySockAddr
   
   mvDataStore <- defaultDataStore >>= newMVar
   mvStoreHT <- H.new >>= newMVar
+  pingREQs <- newMVar V.empty
 
+  let env :: KademliaEnv = KademliaEnv{..}
+  
   {-case args of
     (yourport:[]) -> do
       mv <- newMVar 0
@@ -86,12 +93,14 @@ runKademlia (Config{..}) = do
       --void $ replicateM (caps - 1) $ forkIO $ loop mvStoreHT sock
       loop (KademliaEnv{..}) sock-}
   
+  interactive env
+  pingREQReaper cfgPingReqTimeoutUs env
   bind sock mySockAddr
-  putStrLn $ "Kademlia bound to " ++ T.unpack cfgPort
+  putStrLn $ "Kademlia bound to " ++ show cfgPort
   caps <- getNumCapabilities
   putStrLn $ "num capabilities [" ++ show caps ++ "]"
   --void $ replicateM (caps - 1) $ forkIO $ loop mvStoreHT sock
-  loop (KademliaEnv{..}) sock
+  loop env sock
 
   return ()
 
@@ -99,12 +108,14 @@ loop :: KademliaEnv -> Socket -> IO ()
 loop (KademliaEnv{..}) sock = forever $ do
   (bs, sockAddr) <- NB.recvFrom sock recvBytes
   forkIO $ do
-    let send = flip (NB.sendAllTo sock) sockAddr
+    let send = flip (NB.sendAllTo sock) sockAddr . BL.toStrict . encode
     let rpc :: RPC = decode $ BL.fromStrict bs
     case rpc of
-      RPC_PING thatPeer -> do
+      RPC_PING_REQ thatPeer -> do
+        send $ RPC_PING_REP thisPeer
+      RPC_PING_REP thatPeer -> do
         void $ addPeer thisPeer rt thatPeer
-      RPC_STORE k n m l bs -> do
+      RPC_STORE_REQ k n m l bs -> do
         -- TODO only lock on write?
         storeHT <- takeMVar mvStoreHT -- TAKE
         mtvVec <- H.lookup storeHT k

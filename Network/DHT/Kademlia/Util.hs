@@ -39,7 +39,7 @@ storeChunks k v = loop 0 k v
       | B.null v = []
       | otherwise = rpc : loop (i+1) k rest
       where
-        rpc = RPC_STORE k i totalChunks chunkLen chunk
+        rpc = RPC_STORE_REQ k i totalChunks chunkLen chunk
         (chunk, rest) = B.splitAt chunkBytes v
         chunkLen = fromIntegral $ B.length chunk
 
