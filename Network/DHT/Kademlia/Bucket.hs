@@ -38,7 +38,7 @@ addPeerLoop xcalled this@(Peer thisNodeId _) kbuckets that
   | xcalled > 1 = return $ Left "infinite loop would occur"
   | this == that = return $ Right ()
   | otherwise = do
-      now <- epochNow
+      now <- lastSeen
       e <- atomically $ do
         mKB <- findKBucket that kbuckets
         case mKB of

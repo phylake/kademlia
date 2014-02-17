@@ -34,7 +34,7 @@ systemAssumptions = describe "system assumptions" $ do
   it "systemK is 2" $ systemK `shouldBe` 2
   it "systemBits is 3" $ systemBits `shouldBe` 3
 
-rpcInterface :: RPCHooks -> Spec
+--rpcInterface :: RPCHooks -> Spec
 rpcInterface = undefined
 {-rpcInterface = describe "RPC interface" $ do
   it "splits range in [kMinRange, kMaxRange)" $

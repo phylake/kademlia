@@ -3,19 +3,47 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-module Network.DHT.Kademlia.Def (
-  k
-, bits
+module Network.DHT.Kademlia.Def (
+  systemK
+, systemBits
+, systemBytes
 , recvBytes
-, Hooks
-, DataStore
+, chunkBytes
+
+, DataStoreType(..)
+, Config(..)
+
+, KademliaEnv(..)
+
+, DataStore(..)
+, defaultDataStore
+
 , NodeId
+, Key
+
+#ifdef TEST
+, LastSeen(..)
+#else
 , LastSeen
-, KBucket
+#endif
+, lastSeen
+
+, Peer(..)
+
+, KBucket(..)
+, defaultKBucket
+
 , RoutingTable
-, RPC(RPC_PING, RPC_STORE, RPC_FIND_NODE, RPC_FIND_VALUE)
-) where-}
-module Network.DHT.Kademlia.Def where
+, defaultRoutingTable
+
+, RPC(RPC_PING_REQ,
+      RPC_PING_REP,
+      RPC_STORE_REQ,
+      RPC_FIND_NODE,
+      RPC_FOUND_NODE,
+      RPC_FIND_VALUE)
+) where
+--module Network.DHT.Kademlia.Def where
 
 import           Control.Applicative
 import           Control.Concurrent
@@ -30,6 +58,7 @@ import           Data.Vector ((!))
 import           GHC.Generics
 import           Network.Socket (SockAddr(..), PortNumber(..))
 import           Util.Integral
+import           Util.Time
 import           Util.Words
 import qualified Data.ByteString as B
 import qualified Data.HashTable.IO as H
@@ -75,6 +104,37 @@ recvBytes = 548
 chunkBytes :: Int
 chunkBytes = recvBytes - 1 - systemBytes - 4 - 4 - 2
 
+data DataStoreType = Hedis
+                   | HashTables
+
+instance FromJSON DataStoreType where
+  parseJSON (Object v) = do
+    (t :: Text) <- v .: "type"
+    case t of
+      "hedis" -> return Hedis
+      "hashtables" -> return HashTables
+      _ -> mzero
+  parseJSON _ = mzero
+
+data Config = Config {
+                       cfgNodeId :: Text
+                     , cfgHost :: Text
+                     , cfgPort :: Word16
+                     , cfgRoutingTablePath :: Text
+                     , cfgPingReqTimeoutUs :: Int
+                     , cfgDSType :: DataStoreType
+                     }
+
+instance FromJSON Config where
+  parseJSON (Object v) = Config <$>
+    v .: "nodeId" <*>
+    (v .:? "host" .!= "127.0.0.1") <*>
+    (v .:? "port" .!= 3000) <*>
+    (v .: "routingTablePath") <*>
+    (v .:? "pingReqTimeout" .!= 3000) <*>
+    (v .:? "dataStore" .!= HashTables)
+  parseJSON _ = mzero
+
 type StoreHT = H.BasicHashTable B.ByteString (TVar (V.Vector B.ByteString))
 
 data KademliaEnv = KademliaEnv {
@@ -105,7 +165,16 @@ defaultDataStore = do
 
 type NodeId = Key
 type Key = Double
-type LastSeen = Double
+
+-- | Constructor not exposed so there can be no mistakes in units
+newtype LastSeen = LastSeen { unLast :: Double }
+                   deriving (Show, Eq, Generic)
+
+instance ToJSON LastSeen where
+instance FromJSON LastSeen where
+
+lastSeen :: IO LastSeen
+lastSeen = liftM LastSeen epochNow
 
 data Peer = Peer {
                    nodeId :: NodeId
@@ -247,34 +316,3 @@ instance Binary RPC where
       --4 -> return $ RPC_FIND_NODE $ Peer 0 
       5 -> return $ RPC_FIND_VALUE
       otherwise -> return RPC_UNKNOWN
-
-data DataStoreType = Hedis
-                   | HashTables
-
-instance FromJSON DataStoreType where
-  parseJSON (Object v) = do
-    (t :: Text) <- v .: "type"
-    case t of
-      "hedis" -> return Hedis
-      "hashtables" -> return HashTables
-      _ -> mzero
-  parseJSON _ = mzero
-
-data Config = Config {
-                       cfgNodeId :: Text
-                     , cfgHost :: Text
-                     , cfgPort :: Word16
-                     , cfgRoutingTablePath :: Text
-                     , cfgPingReqTimeoutUs :: Int
-                     , cfgDSType :: DataStoreType
-                     }
-
-instance FromJSON Config where
-  parseJSON (Object v) = Config <$>
-    v .: "nodeId" <*>
-    (v .:? "host" .!= "127.0.0.1") <*>
-    (v .:? "port" .!= 3000) <*>
-    (v .: "routingTablePath") <*>
-    (v .:? "pingReqTimeout" .!= 3000) <*>
-    (v .:? "dataStore" .!= HashTables)
-  parseJSON _ = mzero

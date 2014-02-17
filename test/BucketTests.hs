@@ -33,7 +33,7 @@ thisNode = defaultPeer {nodeId = 1}
 
 -- the single bucket split and the newPeer exists in it
 splitBucket = rightKBucket {
-  kContent = V.fromList [(newPeer, 0)]
+  kContent = V.fromList [(newPeer, LastSeen 0)]
 }
 
 addPeerInRange :: Peer -> RoutingTable -> IO Bool
@@ -48,8 +48,8 @@ addPeerInRange thatNode rt = do
 
 splitDropBucket = rightKBucket {
   kContent = V.fromList [
-    (defaultPeer {nodeId = 6}, 0)
-  , (defaultPeer {nodeId = 7}, 0)
+    (defaultPeer {nodeId = 6}, LastSeen 0)
+  , (defaultPeer {nodeId = 7}, LastSeen 0)
   ]
 }
 
@@ -104,6 +104,6 @@ rightKBucket = KBucket {
 }
 
 fullContent = V.generate systemK genF where
-  genF i = (defaultPeer {nodeId = fromIntegral i}, 0)
+  genF i = (defaultPeer {nodeId = fromIntegral i}, LastSeen 0)
 
 defaultPeer = Peer 0 $ SockAddrUnix ""
