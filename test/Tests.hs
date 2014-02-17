@@ -17,7 +17,7 @@ main = hspec $
     tVarAssumptions
     kBucket
     routingTable
-    rpcSerialization
+    serialization
 
 tVarAssumptions :: Spec
 tVarAssumptions = describe "TVar" $ do

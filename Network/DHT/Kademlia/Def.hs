@@ -1,4 +1,5 @@
 {-# LANGUAGE CPP #-}
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -21,17 +22,18 @@ import           Control.Concurrent
 import           Control.Concurrent.STM
 import           Control.Monad
 import           Data.Aeson
-import           Data.Time.Clock
 import           Data.Binary
 import           Data.Bits
 import           Data.Text (Text(..))
+import           Data.Time.Clock
 import           Data.Vector ((!))
+import           GHC.Generics
 import           Network.Socket (SockAddr(..), PortNumber(..))
 import           Util.Integral
 import           Util.Words
 import qualified Data.ByteString as B
-import qualified Data.Vector as V
 import qualified Data.HashTable.IO as H
+import qualified Data.Vector as V
 
 {-
 k-bucket = list = [(IP, Port, NodeId)]
@@ -109,7 +111,10 @@ data Peer = Peer {
                    nodeId :: NodeId
                  , location :: SockAddr
                  }
-                 deriving (Show, Eq)
+                 deriving (Show, Eq, Generic)
+
+instance ToJSON Peer where
+instance FromJSON Peer where
 
 instance Binary Peer where
   put (Peer{..}) = do
@@ -129,6 +134,25 @@ instance Binary SockAddr where
     hostAddress <- get
     return $ SockAddrInet (PortNum portNumber) hostAddress
 
+instance ToJSON PortNumber where
+  toJSON (PortNum w) = toJSON w
+
+instance FromJSON PortNumber where
+  parseJSON n = liftM PortNum (parseJSON n)
+
+instance ToJSON SockAddr where
+  toJSON (SockAddrInet port host) = object [
+      "port" .= port
+    , "host" .= host
+    ]
+  toJSON _ = Null
+
+instance FromJSON SockAddr where
+  parseJSON (Object v) = SockAddrInet <$> 
+    v .: "port" <*>
+    v .: "host"
+  parseJSON _ = mzero
+
 -- | range is [kMinRange, kMaxRange)
 data KBucket = KBucket {
                          -- TODO how is lock optimism affected for reads on Peer
@@ -137,9 +161,12 @@ data KBucket = KBucket {
                        , kMinRange :: Double
                        , kMaxRange :: Double
                        }
-                       deriving (Show, Eq)
+                       deriving (Show, Eq, Generic)
 
 defaultKBucket = KBucket {kContent = V.empty, kMinRange = 0, kMaxRange = 0}
+
+instance ToJSON KBucket where
+instance FromJSON KBucket where
 
 -- | Length of `systemBits`
 type RoutingTable = V.Vector (TVar KBucket)

@@ -1,23 +1,43 @@
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE OverloadedStrings #-}
-module SerializationTests (rpcSerialization) where
+module SerializationTests (serialization) where
 
-import           Data.Binary
+import           Control.Concurrent.STM
+import           Data.Aeson as JSON
+import           Data.Binary as Bin
+import           Data.Maybe
 import           Network.DHT.Kademlia.Def
 import           Network.Socket
 import           Test.Hspec
 import qualified Data.ByteString as B
+import qualified Data.Vector as V
+
+serialization :: Spec
+serialization = do
+  routingTableSerialization
+  rpcSerialization
+
+routingTableSerialization :: Spec
+routingTableSerialization = do
+  describe "instance ToJSON/FromJSON RoutingTable" $
+    it "is isomorphic" $
+      isomorphic `shouldReturn` True
+  where
+    isomorphic = do
+      rt <- atomically $ defaultRoutingTable >>= V.mapM readTVar
+      return $ jEncodeDecode rt == rt
 
 rpcSerialization :: Spec
-rpcSerialization = describe "RPC serialization" $ do
+rpcSerialization = describe "instance Binary RPC" $ do
   rpcPING
   rpcSTORE
 
 rpcSTORE :: Spec
 rpcSTORE = describe "STORE" $ do
   it "is isomorphic" $
-    encodeDecode rpc `shouldBe` rpc
+    bEncodeDecode rpc `shouldBe` rpc
   it "ignores chunks longer than the specified length" $
-    encodeDecode rpcLong `shouldBe` rpc
+    bEncodeDecode rpcLong `shouldBe` rpc
   where
     rpc :: RPC
     rpc = RPC_STORE_REQ key 42 43 12 "chunk o data"
@@ -28,9 +48,9 @@ rpcSTORE = describe "STORE" $ do
 rpcPING :: Spec
 rpcPING = describe "PING" $ do
   it "REQ is isomorphic" $
-    encodeDecode rpcREQ `shouldBe` rpcREQ
+    bEncodeDecode rpcREQ `shouldBe` rpcREQ
   it "REP is isomorphic" $
-    encodeDecode rpcREP `shouldBe` rpcREP
+    bEncodeDecode rpcREP `shouldBe` rpcREP
   where
     peer = Peer 12345678 $ SockAddrInet (PortNum 1024) 0x7F000001
     
@@ -40,8 +60,11 @@ rpcPING = describe "PING" $ do
     rpcREP :: RPC
     rpcREP = RPC_PING_REP peer
 
-encodeDecode :: (Binary a) => a -> a
-encodeDecode = decode . encode
+bEncodeDecode :: (Binary a) => a -> a
+bEncodeDecode = Bin.decode . Bin.encode
+
+jEncodeDecode :: (ToJSON a, FromJSON a) => a -> a
+jEncodeDecode = fromJust . JSON.decode . JSON.encode
 
 key :: B.ByteString
 key = B.pack $ map fromIntegral [0..systemBytes-1]
