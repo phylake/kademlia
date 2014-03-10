@@ -146,6 +146,7 @@ data KademliaEnv = KademliaEnv {
                                --, rpc :: RPCHooks
                                }
 
+-- | This is not thread safe you must add thread safety yourself
 data DataStore = DataStore {
                              dsGet :: B.ByteString -- ^ key
                                    -> IO (Maybe B.ByteString) -- ^ maybe value
@@ -270,9 +271,9 @@ data RPC = RPC_UNKNOWN
          | RPC_PING_REQ Peer
          | RPC_PING_REP Peer
          | RPC_STORE_REQ B.ByteString -- ^ key
-                         Word32 -- ^ sequence number
-                         Word32 -- ^ total chunks
-                         Word16 -- ^ length of chunk to come
+                         Word32 -- ^ chunk sequence number
+                         Word32 -- ^ chunk total
+                         Word16 -- ^ chunk length
                          B.ByteString -- ^ chunk of data
          | RPC_FIND_NODE Peer
          | RPC_FOUND_NODE Peer
