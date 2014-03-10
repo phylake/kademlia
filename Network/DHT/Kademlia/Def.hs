@@ -133,6 +133,7 @@ instance FromJSON Config where
     (v .:? "dataStore" .!= HashTables)
   parseJSON _ = mzero
 
+{- | RPC Store's data chunks -}
 type StoreHT = H.BasicHashTable B.ByteString (TVar (V.Vector B.ByteString))
 
 data KademliaEnv = KademliaEnv {
@@ -161,7 +162,10 @@ defaultDataStore = do
   , dsGet = H.lookup ht
   }
 
+-- | Node ids and keys are synonymous
 type NodeId = Key
+
+-- | A key is an integer containing `systemBits` bits
 type Key = Double
 
 -- | Constructor not exposed so there can be no mistakes in units
@@ -221,6 +225,11 @@ instance FromJSON SockAddr where
   parseJSON _ = mzero
 
 -- | range is [kMinRange, kMaxRange)
+-- 
+-- tail is most recently seen, head is least recently seen
+-- 
+-- "k-buckets effectively implement a least-recently seen eviction policy,
+--  except that live nodes are never removed from the list"
 data KBucket = KBucket {
                          -- TODO how is lock optimism affected for reads on Peer
                          --      when there are frequent writes to LastSeen
@@ -239,7 +248,8 @@ instance FromJSON KBucket where
 type RoutingTable = V.Vector (TVar KBucket)
 
 -- | Preallocated vector of length systemBits where
--- indices 1 through systemBits - 1 are buckets needing configured to split into
+-- indices 1 through systemBits - 1 are empty buckets that will contain contents
+-- of other buckets as they're split,
 -- and the bucket at index 0 contains the entire bit range
 defaultRoutingTable :: STM RoutingTable
 defaultRoutingTable = do

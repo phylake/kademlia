@@ -60,8 +60,8 @@ runKademlia config@(Config{..}) = do
   privateSockAddr <- liftM (SockAddrInet $ PortNum cfgPort) $
                            inet_addr "127.0.0.1"
 
-  publicSockAddr <- liftM (SockAddrInet $ PortNum cfgPort) $
-                          inet_addr $ T.unpack cfgHost
+  publicSockAddr  <- liftM (SockAddrInet $ PortNum cfgPort) $
+                           inet_addr $ T.unpack cfgHost
 
   let thisPeer = Peer (read $ T.unpack cfgNodeId) publicSockAddr
 
@@ -186,6 +186,7 @@ loop (KademliaEnv{..}) sock = forever $ do
         putStrLn $ "received: " ++ (BC.unpack bs)
         return ()
 
+-- | Store some data on another node by splitting up the data into chunks
 rpcStore :: Socket
          -> MVar DataStore
          -> B.ByteString -- ^ key

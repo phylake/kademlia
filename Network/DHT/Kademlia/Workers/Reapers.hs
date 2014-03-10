@@ -33,9 +33,17 @@ pingREQReaper (KademliaEnv{..}) = forkIO_ $ forever $ do
     pings <- readTVar pingREQs
     
     let (expired, rest) = V.partition (\(t,_) -> diffUTCTime now t > threshold) pings
-    -- TODO update k buckets containing expired
+    V.mapM (fBucket $ V.map snd expired) rt
     --V.forM l $ \(_, p) -> putStrLn (show p ++ " timed out")
     
     writeTVar pingREQs rest
   where
     threshold = 1 -- should be <= threadDelay
+    
+    fBucket :: V.Vector Peer -> TVar KBucket -> STM ()
+    fBucket expired tv = do
+      kb@(KBucket{..}) <- readTVar tv
+      writeTVar tv $ kb {kContent = V.filter (fContent expired) kContent}
+    
+    fContent :: V.Vector Peer -> (Peer, LastSeen) -> Bool
+    fContent expired (p,_) = V.elem p expired
