@@ -6,8 +6,6 @@ module Network.DHT.Kademlia (runKademlia) where
 
 import           Control.Concurrent
 import           Control.Concurrent.STM
-import           Control.Concurrent.Suspend.Lifted (sDelay)
-import           Control.Concurrent.Timer
 import           Control.Monad
 import           Data.Binary
 import           Data.Time.Clock
@@ -18,9 +16,8 @@ import           Network.DHT.Kademlia.Bucket
 import           Network.DHT.Kademlia.Def
 import           Network.DHT.Kademlia.Util
 import           Network.DHT.Kademlia.Workers
-import           Network.Socket
+import           Network.Socket hiding (send)
 import           System.Environment
-import           System.Posix.Signals (installHandler, Handler(Catch), sigINT, sigTERM)
 import           System.Timeout
 import           Util.Integral
 import qualified Data.ByteString as B
@@ -30,16 +27,6 @@ import qualified Data.HashTable.IO as H
 import qualified Data.Text as T
 import qualified Data.Vector as V
 import qualified Network.Socket.ByteString as NB
-
-handler :: MVar Int -> IO ()
-handler sigMV = modifyMVar_ sigMV (return . (+1))
-
-cthreads = 1
-wait mv = do
-  c <- readMVar mv
-  if c == cthreads
-    then return ()
-    else wait mv
 
 runKademlia :: Config -> IO ()
 runKademlia config@(Config{..}) = do
@@ -53,7 +40,7 @@ runKademlia config@(Config{..}) = do
   --      2. fall back to table specified in cfgRoutingTablePath for nodes that
   --         aren't new to the network
   --      3. PING each least recently seen node
-  (rt :: RoutingTable) <- atomically defaultRoutingTable
+  (rt :: RoutingTable) <- readRoutingTable $ T.unpack cfgRoutingTablePath
 
   sock <- socket AF_INET Datagram defaultProtocol
 
@@ -71,39 +58,10 @@ runKademlia config@(Config{..}) = do
 
   let env :: KademliaEnv = KademliaEnv{..}
 
-  {-case args of
-    (yourport:[]) -> do
-      mv <- newMVar 0
-      void . replicateM cthreads . forkIO $ do
-        threadDelay $ secToMicro $ read delaySecs
-        let yourSockAddr = SockAddrInet (PortNum $ read yourport) addr
-        forM_ [0..0] $ \i -> do
-          --let bs = BL.toStrict $ encode $ RPC_STORE "c3969900f0616ef5943a" (fromIntegral i) 2 9 "abcd efgh"
-          --NB.sendAllTo sock bs yourSockAddr
-          --NB.sendAllTo sock "PING" yourSockAddr
-          --mv <- newMVar ds
-          --rpcStore sock mv testKey $ Peer 0 yourSockAddr
-          return ()
-        c <- takeMVar mv
-        putMVar mv $ c+1
-      wait mv
-    _ -> do
-      t <- repeatedTimer
-        --(NB.sendAll sock $ BL.toStrict $ encode RPC_PING)
-        (return ())
-        (sDelay $ read delaySecs)
-
-      (storeHT :: StoreHT) <- H.new
-      mvStoreHT <- newMVar storeHT
-
-      bind sock privateSockAddr
-      caps <- getNumCapabilities
-      --void $ replicateM (caps - 1) $ forkIO $ loop mvStoreHT sock
-      loop (KademliaEnv{..}) sock-}
-
   -- WORKERS
   interactive env
   pingREQReaper env
+  saveRoutingTable env
 
   -- BIND
   bind sock privateSockAddr
@@ -113,12 +71,12 @@ runKademlia config@(Config{..}) = do
   -- TODO see if there are any gains to be had here.
   --      i think recvFrom blocks across all threads making this useless
   --void $ replicateM (caps - 1) $ forkIO $ loop env sock
-  loop env sock
+  loop env
 
   return ()
 
-loop :: KademliaEnv -> Socket -> IO ()
-loop (KademliaEnv{..}) sock = forever $ do
+loop :: KademliaEnv -> IO ()
+loop (KademliaEnv{..}) = forever $ do
   (bs, sockAddr) <- NB.recvFrom sock recvBytes
   forkIO $ do
     let send = flip (NB.sendAllTo sock) sockAddr . BL.toStrict . encode
@@ -187,12 +145,11 @@ loop (KademliaEnv{..}) sock = forever $ do
         return ()
 
 -- | Store some data on another node by splitting up the data into chunks
-rpcStore :: Socket
-         -> MVar DataStore
+rpcStore :: KademliaEnv
+         -> Peer -- ^ destination node
          -> B.ByteString -- ^ key
-         -> Peer
          -> IO ()
-rpcStore sock mvDataStore key (Peer{..}) = do
+rpcStore KademliaEnv{..} Peer{..} key = do
   dataStore@(DataStore{..}) <- takeMVar mvDataStore
   mVal <- dsGet key
   putMVar mvDataStore dataStore
@@ -203,6 +160,6 @@ rpcStore sock mvDataStore key (Peer{..}) = do
       let (chunk:chunks) = storeChunks key v
       mapM_ send chunks
       send chunk
-      -- TODO send PING to update receiving node's k-bucket
+      send $ RPC_PING_REQ thisPeer
   where
     send rpc = NB.sendAllTo sock (BL.toStrict $ encode rpc) location

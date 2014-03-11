@@ -35,6 +35,8 @@ module Network.DHT.Kademlia.Def (
 
 , RoutingTable
 , defaultRoutingTable
+, writeRoutingTable
+, readRoutingTable
 
 , RPC(RPC_PING_REQ,
       RPC_PING_REP,
@@ -49,18 +51,19 @@ import           Control.Applicative
 import           Control.Concurrent
 import           Control.Concurrent.STM
 import           Control.Monad
-import           Data.Aeson
+import           Data.Aeson as JSON
 import           Data.Binary
 import           Data.Bits
 import           Data.Text (Text(..))
 import           Data.Time.Clock
 import           Data.Vector ((!))
 import           GHC.Generics
-import           Network.Socket (SockAddr(..), PortNumber(..))
+import           Network.Socket (SockAddr(..), PortNumber(..), Socket(..))
 import           Util.Integral
 import           Util.Time
 import           Util.Words
 import qualified Data.ByteString as B
+import qualified Data.ByteString.Lazy as BL
 import qualified Data.HashTable.IO as H
 import qualified Data.Vector as V
 
@@ -143,6 +146,7 @@ data KademliaEnv = KademliaEnv {
                                , mvStoreHT :: MVar StoreHT
                                , thisPeer :: Peer
                                , pingREQs :: TVar (V.Vector (UTCTime, Peer))
+                               , sock :: Socket
                                --, rpc :: RPCHooks
                                }
 
@@ -252,20 +256,38 @@ type RoutingTable = V.Vector (TVar KBucket)
 -- indices 1 through systemBits - 1 are empty buckets that will contain contents
 -- of other buckets as they're split,
 -- and the bucket at index 0 contains the entire bit range
-defaultRoutingTable :: STM RoutingTable
-defaultRoutingTable = do
+defaultRoutingTable :: Maybe Int -> STM RoutingTable
+defaultRoutingTable mLen = do
   rt <- V.replicateM systemBits' (newTVar defaultKBucket)
   writeTVar (rt ! 0) $ defaultKBucket {kMaxRange = 2 ** systemBits}
   return rt
   where
-    systemBits' = fromIntegral systemBits
+    systemBits' = maybe (fromIntegral systemBits) id mLen
+
+writeRoutingTable :: FilePath -> RoutingTable -> IO ()
+writeRoutingTable fp rt = atomically (V.mapM readTVar rt) >>=
+  return . JSON.encode . V.takeWhile (/= defaultKBucket) >>=
+  BL.writeFile fp
+
+readRoutingTable :: FilePath -> IO RoutingTable
+readRoutingTable fp = do
+  (mBuckets :: Maybe [KBucket]) <- BL.readFile fp >>= return . JSON.decode
+  case mBuckets of
+    Nothing -> atomically $ defaultRoutingTable Nothing
+    Just buckets -> do
+      let remainderLen = Just $ fromIntegral systemBits - length buckets
+      atomically $ do
+        remainder <- defaultRoutingTable remainderLen
+        buckets' <- V.mapM newTVar $ V.fromList buckets
+        return $ V.concat [buckets', remainder]
+      
 
 data RPCHooks = RPCHooks {
                            foundNode :: Peer -> IO ()
                          , ping :: Peer -> IO ()
                          }
 
-data RPCEnvelope = RPCEnvelope NodeId RPC
+--data RPCEnvelope = RPCEnvelope NodeId RPC
 
 data RPC = RPC_UNKNOWN
          | RPC_PING_REQ Peer
