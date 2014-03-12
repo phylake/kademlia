@@ -24,7 +24,7 @@ routingTableSerialization = do
       isomorphic `shouldReturn` True
   where
     isomorphic = do
-      rt <- atomically $ defaultRoutingTable >>= V.mapM readTVar
+      rt <- atomically $ defaultRoutingTable Nothing >>= V.mapM readTVar
       return $ jEncodeDecode rt == rt
 
 rpcSerialization :: Spec

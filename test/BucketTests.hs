@@ -83,7 +83,7 @@ stripSTM = V.mapM (atomically . readTVar)
 
 rtOneFullBucket :: IO RoutingTable
 rtOneFullBucket = atomically $ do
-  rt <- defaultRoutingTable
+  rt <- defaultRoutingTable Nothing
   writeTVar (rt ! 0) fullKBucket
   return rt
 
