@@ -120,19 +120,17 @@ instance FromJSON DataStoreType where
   parseJSON _ = mzero
 
 data Config = Config {
-                       cfgNodeId :: Text
-                     , cfgHost :: Text
-                     , cfgPort :: Word16
+                       cfgThisNode :: Peer
+                     , cfgSeedNode :: Peer
                      , cfgRoutingTablePath :: Text
                      , cfgDSType :: DataStoreType
                      }
 
 instance FromJSON Config where
   parseJSON (Object v) = Config <$>
-    v .: "nodeId" <*>
-    (v .:? "host" .!= "127.0.0.1") <*>
-    (v .:? "port" .!= 3000) <*>
-    (v .: "routingTablePath") <*>
+    v .: "thisNode" <*>
+    v .: "seedNode" <*>
+    v .: "routingTablePath" <*>
     (v .:? "dataStore" .!= HashTables)
   parseJSON _ = mzero
 
@@ -216,6 +214,7 @@ instance ToJSON PortNumber where
 instance FromJSON PortNumber where
   parseJSON n = liftM PortNum (parseJSON n)
 
+-- TODO flip bytes
 instance ToJSON SockAddr where
   toJSON (SockAddrInet port host) = object [
       "port" .= port
@@ -223,6 +222,7 @@ instance ToJSON SockAddr where
     ]
   toJSON _ = Null
 
+-- TODO flip bytes
 instance FromJSON SockAddr where
   parseJSON (Object v) = SockAddrInet <$> 
     v .: "port" <*>

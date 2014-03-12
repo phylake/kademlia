@@ -31,37 +31,32 @@ import qualified Network.Socket.ByteString as NB
 runKademlia :: Config -> IO ()
 runKademlia config@(Config{..}) = do
   -- init networking
-  -- apparently this is also needed on unix without -threaded
+  -- apparently this is also needed on unix if -threaded is absent
   -- http://hackage.haskell.org/package/network-2.4.0.1/docs/Network-Socket.html#v:withSocketsDo
   withSocketsDo $ return ()
 
-  -- TODO bottom of 2.3
-  --      1. load periodically saved routing table
-  --      2. fall back to table specified in cfgRoutingTablePath for nodes that
-  --         aren't new to the network
-  --      3. PING each least recently seen node
-  (rt :: RoutingTable) <- readRoutingTable $ T.unpack cfgRoutingTablePath
-
   sock <- socket AF_INET Datagram defaultProtocol
 
-  privateSockAddr <- liftM (SockAddrInet $ PortNum cfgPort) $
+  let thisPeer@(Peer thisNodeId (SockAddrInet cfgPort cfgHost)) = cfgThisNode
+  --putStrLn $ show cfgThisNode
+  
+  privateSockAddr <- liftM (SockAddrInet cfgPort) $
                            inet_addr "127.0.0.1"
 
-  publicSockAddr  <- liftM (SockAddrInet $ PortNum cfgPort) $
-                           inet_addr $ T.unpack cfgHost
-
-  let thisPeer = Peer (read $ T.unpack cfgNodeId) publicSockAddr
 
   mvDataStore <- defaultDataStore >>= newMVar
   mvStoreHT <- H.new >>= newMVar
   pingREQs <- atomically $ newTVar V.empty
+
+  (rt :: RoutingTable) <- readRoutingTable $ T.unpack cfgRoutingTablePath
+  joinNetwork rt sock
 
   let env :: KademliaEnv = KademliaEnv{..}
 
   -- WORKERS
   interactive env
   pingREQReaper env
-  saveRoutingTable env
+  persistRoutingTable env
 
   -- BIND
   bind sock privateSockAddr
@@ -163,3 +158,15 @@ rpcStore KademliaEnv{..} Peer{..} key = do
       send $ RPC_PING_REQ thisPeer
   where
     send rpc = NB.sendAllTo sock (BL.toStrict $ encode rpc) location
+
+-- | Bottom of 2.3
+-- "To join a network, a node u must have a contact to an already participating
+--  node w. u inserts w into the appropriate k-bucket. u then performs a node
+--  lookup for its own node ID. Finally, u refreshes all k-buckets further away
+--  than its closest neighbor. During the refreshes, u both populates its own
+--  k-buckets and inserts itself into other nodes' k-buckets as necessary"
+joinNetwork :: RoutingTable -> Socket -> IO ()
+joinNetwork rt sock = do
+  kbs <- liftM (V.takeWhile (/= defaultKBucket)) $
+         atomically $ V.mapM readTVar rt
+  return ()

@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-module Network.DHT.Kademlia.Workers.Persistence (saveRoutingTable) where
+module Network.DHT.Kademlia.Workers.Persistence (persistRoutingTable) where
 
 import           Control.Concurrent
 import           Control.Concurrent.STM
@@ -24,8 +24,8 @@ import qualified Data.HashTable.IO as H
 import qualified Data.Text as T
 import qualified Data.Vector as V
 
-saveRoutingTable :: KademliaEnv -> IO ()
-saveRoutingTable (KademliaEnv{..}) = forkIO_ $ forever $ do
+persistRoutingTable :: KademliaEnv -> IO ()
+persistRoutingTable (KademliaEnv{..}) = forkIO_ $ forever $ do
   threadDelay $ secToMicro 10
   writeRoutingTable fp rt
   where
