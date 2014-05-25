@@ -14,7 +14,7 @@ idInRange :: (Ord a) => a -> a -> a -> Bool
 idInRange id min max = min <= id && id < max
 
 -- | Psuedo code for 2.4
--- given this node's id ID and a new peer C
+-- given this node's id ID and a new node C
 --
 -- > function ADD_PEER()
 -- >   get k-bucket B for C
@@ -23,18 +23,18 @@ idInRange id min max = min <= id && id < max
 -- >   else
 -- >     if B.minRange <= ID && ID < B.maxRange then SPLIT() and ADD_PEER()
 -- >     else ignore C
-addPeer :: Peer -- ^ this node
+addNode :: Node -- ^ this node
         -> RoutingTable
-        -> Peer -- ^ other node
+        -> Node -- ^ other node
         -> IO (Either String ())
-addPeer = addPeerLoop 0
+addNode = addNodeLoop 0
 
-addPeerLoop :: Int -- ^ number of times this function has called itself
-            -> Peer -- ^ this node
+addNodeLoop :: Int -- ^ number of times this function has called itself
+            -> Node -- ^ this node
             -> RoutingTable
-            -> Peer -- ^ other node
+            -> Node -- ^ other node
             -> IO (Either String ())
-addPeerLoop xcalled this@(Peer thisNodeId _) kbuckets that
+addNodeLoop xcalled this@(Node thisNodeId _) kbuckets that
   | xcalled > 1 = return $ Left "infinite loop would occur"
   | this == that = return $ Right ()
   | otherwise = do
@@ -63,12 +63,12 @@ addPeerLoop xcalled this@(Peer thisNodeId _) kbuckets that
       case e of
         Left err -> return $ Left err
         Right False -> return $ Right ()
-        Right True -> addPeerLoop (xcalled+1) this kbuckets that
+        Right True -> addNodeLoop (xcalled+1) this kbuckets that
 
-findKBucket :: Peer -- ^ the peer to find
+findKBucket :: Node -- ^ the node to find
             -> V.Vector (TVar KBucket)
             -> STM (Maybe (KBucket, Int)) -- ^ Maybe (found bucket, index)
-findKBucket (Peer key _) vec = loop (V.length vec - 1) where
+findKBucket (Node key _) vec = loop (V.length vec - 1) where
   loop idx
     | idx < 0 = return Nothing
     | otherwise = do
@@ -105,10 +105,10 @@ splitKBucketImpl KBucket{..} = (lBucket, rBucket)
     
     (lContent, rContent) = V.foldl splitFold (V.empty, V.empty) kContent
 
-    splitFold :: (V.Vector (Peer, LastSeen), V.Vector (Peer, LastSeen))
-              -> (Peer, LastSeen)
-              -> (V.Vector (Peer, LastSeen), V.Vector (Peer, LastSeen))
-    splitFold (l,r) t@(Peer nodeId _, _) =
+    splitFold :: (V.Vector (Node, LastSeen), V.Vector (Node, LastSeen))
+              -> (Node, LastSeen)
+              -> (V.Vector (Node, LastSeen), V.Vector (Node, LastSeen))
+    splitFold (l,r) t@(Node nodeId _, _) =
       if idInRange nodeId kMidRange kMaxRange
         then (l, V.snoc r t) -- snoc on left fold
         else (V.snoc l t, r)

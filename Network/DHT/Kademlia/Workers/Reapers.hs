@@ -39,11 +39,11 @@ pingREQReaper KademliaEnv{..} = forkIO_ $ forever $ do
   where
     threshold = 1 -- should be <= threadDelay
     
-    fBucket :: V.Vector Peer -> TVar KBucket -> STM ()
+    fBucket :: V.Vector Node -> TVar KBucket -> STM ()
     fBucket expired tv = do
       kb@KBucket{..} <- readTVar tv
       writeTVar tv $ kb {kContent = V.filter (fContent expired) kContent}
     
     -- keep unexpired nodes
-    fContent :: V.Vector Peer -> (Peer, LastSeen) -> Bool
+    fContent :: V.Vector Node -> (Node, LastSeen) -> Bool
     fContent expired (p,_) = not $ V.elem p expired

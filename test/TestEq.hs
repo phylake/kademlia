@@ -8,8 +8,8 @@ import qualified Data.Vector as V
 class TestEq a where
   (~=) :: a -> a -> Bool
 
-instance TestEq Peer where
-  (Peer a _) ~= (Peer b _) = a == b -- ignore SockAddr
+instance TestEq Node where
+  (Node a _) ~= (Node b _) = a == b -- ignore SockAddr
 
 instance TestEq KBucket where
   (KBucket ac amin amax) ~= (KBucket bc bmin bmax) =

@@ -28,7 +28,7 @@ module Network.DHT.Kademlia.Def (
 #endif
 , lastSeen
 
-, Peer(..)
+, Node(..)
 
 , KBucket(..)
 , defaultKBucket
@@ -121,8 +121,8 @@ instance FromJSON DataStoreType where
   parseJSON _ = mzero
 
 data Config = Config {
-                       cfgThisNode :: Peer
-                     , cfgSeedNode :: Peer
+                       cfgThisNode :: Node
+                     , cfgSeedNode :: Node
                      , cfgRoutingTablePath :: Text
                      , cfgDSType :: DataStoreType
                      }
@@ -143,8 +143,8 @@ data KademliaEnv = KademliaEnv {
                                , dataStore :: DataStore
                                , rt :: RoutingTable
                                , mvStoreHT :: MVar StoreHT
-                               , thisPeer :: Peer -- ^ this node's address
-                               , pingREQs :: TVar (V.Vector (UTCTime, Peer)) -- ^ outstanding ping requests originating from this node
+                               , thisNode :: Node -- ^ this node's address
+                               , pingREQs :: TVar (V.Vector (UTCTime, Node)) -- ^ outstanding ping requests originating from this node
                                , sock :: Socket
                                --, rpc :: RPCHooks
                                }
@@ -183,23 +183,23 @@ instance FromJSON LastSeen where
 lastSeen :: IO LastSeen
 lastSeen = liftM LastSeen epochNow
 
-data Peer = Peer {
+data Node = Node {
                    nodeId :: NodeId
                  , location :: SockAddr
                  }
                  deriving (Show, Eq, Generic)
 
-instance ToJSON Peer where
-instance FromJSON Peer where
+instance ToJSON Node where
+instance FromJSON Node where
 
-instance Binary Peer where
-  put (Peer{..}) = do
+instance Binary Node where
+  put (Node{..}) = do
     put nodeId
     put location
   get = do
     nodeId <- get
     location <- get
-    return Peer{..}
+    return Node{..}
 
 instance Binary SockAddr where
   put (SockAddrInet (PortNum portNumber) hostAddress) = do
@@ -238,9 +238,9 @@ instance FromJSON SockAddr where
 -- "k-buckets effectively implement a least-recently seen eviction policy,
 --  except that live nodes are never removed from the list"
 data KBucket = KBucket {
-                         -- TODO how is lock optimism affected for reads on Peer
+                         -- TODO how is lock optimism affected for reads on Node
                          --      when there are frequent writes to LastSeen?
-                         kContent :: V.Vector (Peer, LastSeen) -- ^ Sorted by LastSeen
+                         kContent :: V.Vector (Node, LastSeen) -- ^ Sorted by LastSeen
                        , kMinRange :: Double
                        , kMaxRange :: Double
                        }
@@ -286,35 +286,35 @@ readRoutingTable fp = do
         remainder <- defaultRoutingTable remainderLen
         buckets' <- V.mapM newTVar $ V.fromList buckets
         return $ V.concat [buckets', remainder]
-      
+
 
 data RPCHooks = RPCHooks {
-                           foundNode :: Peer -> IO ()
-                         , ping :: Peer -> IO ()
+                           foundNode :: Node -> IO ()
+                         , ping :: Node -> IO ()
                          }
 
 --data RPCEnvelope = RPCEnvelope NodeId RPC
 
 data RPC = RPC_UNKNOWN
-         | RPC_PING_REQ Peer
-         | RPC_PING_REP Peer
+         | RPC_PING_REQ Node
+         | RPC_PING_REP Node
          | RPC_STORE_REQ B.ByteString -- ^ key
                          Word32 -- ^ chunk sequence number
                          Word32 -- ^ chunk total
                          Word16 -- ^ chunk length
                          B.ByteString -- ^ chunk of data
-         | RPC_FIND_NODE Peer
-         | RPC_FOUND_NODE Peer
+         | RPC_FIND_NODE Node
+         | RPC_FOUND_NODE Node
          | RPC_FIND_VALUE
          deriving (Show, Eq)
 
 instance Binary RPC where
-  put (RPC_PING_REQ peer) = do
+  put (RPC_PING_REQ node) = do
     putWord8 1
-    put peer
-  put (RPC_PING_REP peer) = do
+    put node
+  put (RPC_PING_REP node) = do
     putWord8 2
-    put peer
+    put node
   put (RPC_STORE_REQ k n m l bs) = do
     putWord8 3
     mapM putWord8 $ B.unpack k
@@ -350,6 +350,6 @@ instance Binary RPC where
         (l :: Word16) <- replicateM 2 getWord8 >>= return . toWord16
         chunk <- replicateM (fromIntegral l) getWord8 >>= return . B.pack
         return $ RPC_STORE_REQ key n m l chunk
-      --4 -> return $ RPC_FIND_NODE $ Peer 0 
+      --4 -> return $ RPC_FIND_NODE $ Node 0 
       5 -> return $ RPC_FIND_VALUE
       otherwise -> return RPC_UNKNOWN

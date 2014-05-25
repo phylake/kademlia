@@ -38,7 +38,7 @@ runKademlia config@Config{..} = do
   -- BEGIN env
   sock <- socket AF_INET Datagram defaultProtocol
 
-  let thisPeer@(Peer thisNodeId (SockAddrInet cfgPort cfgHost)) = cfgThisNode
+  let thisNode@(Node thisNodeId (SockAddrInet cfgPort cfgHost)) = cfgThisNode
   --putStrLn $ show cfgThisNode
   
   privateSockAddr <- liftM (SockAddrInet cfgPort) $
@@ -79,31 +79,31 @@ loop KademliaEnv{..} = forever $ do
   forkIO $ do
     let send = flip (NB.sendAllTo sock) sockAddr . BL.toStrict . encode
     case decode $ BL.fromStrict bs of
-      RPC_PING_REQ thatPeer -> do
+      RPC_PING_REQ thatNode -> do
         now <- getCurrentTime
         atomically $ do
           pings <- readTVar pingREQs
-          writeTVar pingREQs $ V.snoc pings (now, thatPeer)
-        send $ RPC_PING_REP thisPeer
-      RPC_PING_REP thatPeer -> do
-        foundPeer <- atomically $ do
+          writeTVar pingREQs $ V.snoc pings (now, thatNode)
+        send $ RPC_PING_REP thisNode
+      RPC_PING_REP thatNode -> do
+        foundNode <- atomically $ do
           pings <- readTVar pingREQs
           let f = (\(bool, v) t@(_, p) -> case bool of
                                             True -> return (True, V.snoc v t)
-                                            False -> if p == thatPeer
+                                            False -> if p == thatNode
                                               then return (True, v)
                                               else return (False, V.snoc v t))
-          (foundPeer, pings') <- V.foldM f (False, V.empty) pings
-          if foundPeer then
+          (foundNode, pings') <- V.foldM f (False, V.empty) pings
+          if foundNode then
             writeTVar pingREQs pings'
           else
             -- nothing to do but write back old value
             writeTVar pingREQs pings
-          return foundPeer
-        if foundPeer then
-          void $ addPeer thisPeer rt thatPeer
+          return foundNode
+        if foundNode then
+          void $ addNode thisNode rt thatNode
         else
-          putStrLn "[WARNING] got a PING_REP from an unknown peer"
+          putStrLn "[WARNING] got a PING_REP from an unknown node"
       RPC_STORE_REQ k n m _ bs -> do
         storeHT <- takeMVar mvStoreHT -- TAKE
         mtvVec <- H.lookup storeHT k
@@ -141,10 +141,10 @@ loop KademliaEnv{..} = forever $ do
 
 -- | Store some data on another node by splitting up the data into chunks
 rpcStore :: KademliaEnv
-         -> Peer -- ^ destination node
+         -> Node -- ^ destination node
          -> B.ByteString -- ^ key
          -> IO ()
-rpcStore KademliaEnv{..} Peer{..} key = do
+rpcStore KademliaEnv{..} Node{..} key = do
   mVal <- (dsGet dataStore) key
   case mVal of
     Nothing -> return ()
@@ -153,7 +153,7 @@ rpcStore KademliaEnv{..} Peer{..} key = do
       let (chunk:chunks) = storeChunks key v
       mapM_ send chunks
       send chunk
-      send $ RPC_PING_REQ thisPeer
+      send $ RPC_PING_REQ thisNode
   where
     send rpc = NB.sendAllTo sock (BL.toStrict $ encode rpc) location
 
@@ -163,9 +163,9 @@ rpcStore KademliaEnv{..} Peer{..} key = do
 --  lookup for its own node ID. Finally, u refreshes all k-buckets further away
 --  than its closest neighbor. During the refreshes, u both populates its own
 --  k-buckets and inserts itself into other nodes' k-buckets as necessary"
-joinNetwork :: KademliaEnv -> Peer -> IO ()
+joinNetwork :: KademliaEnv -> Node -> IO ()
 joinNetwork KademliaEnv{..} seed = do
-  e <- addPeer thisPeer rt seed
+  e <- addNode thisNode rt seed
   case e of
     Right () -> putStrLn "joinNetwork"
     Left err -> putStrLn err

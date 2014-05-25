@@ -80,7 +80,7 @@ test-suite all
     type:              exitcode-stdio-1.0
     cpp-options:       -DTEST
     hs-source-dirs:    test, .
-    main-is:           Tests.hs
+    main-is:           main.hs
     build-depends:     hspec
                      , base
                      , aeson >=0.6

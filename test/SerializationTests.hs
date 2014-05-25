@@ -52,13 +52,13 @@ rpcPING = describe "PING" $ do
   it "REP is isomorphic" $
     bEncodeDecode rpcREP `shouldBe` rpcREP
   where
-    peer = Peer 12345678 $ SockAddrInet (PortNum 1024) 0x7F000001
+    node = Node 12345678 $ SockAddrInet (PortNum 1024) 0x7F000001
     
     rpcREQ :: RPC
-    rpcREQ = RPC_PING_REQ peer
+    rpcREQ = RPC_PING_REQ node
 
     rpcREP :: RPC
-    rpcREP = RPC_PING_REP peer
+    rpcREP = RPC_PING_REP node
 
 bEncodeDecode :: (Binary a) => a -> a
 bEncodeDecode = Bin.decode . Bin.encode
