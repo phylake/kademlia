@@ -19,27 +19,28 @@ extra-source-files:
 executable kademlia
   default-language:    Haskell2010
   main-is:             main.hs
-  ghc-options:         -O2 -threaded -rtsopts "-with-rtsopts=-N -A500M"
-  build-depends:       base >=4.6 && <4.7
-                     , aeson >=0.6 && <0.7
-                     , binary >=0.6 && <0.7
-                     , bytestring >=0.10 && <0.11
-                     , conduit >=1.0 && <2
-                     , data-binary-ieee754 >=0.4 && <0.5
-                     , directory >=1.2 && <1.3
-                     , filepath >=1.3 && <1.4
-                     , hashtables >=1.1 && <1.2
-                     , monadLib >=3.7 && <3.8
-                     , mtl >=2.1 && <2.2
-                     , network >=2.4 && <2.5
-                     , network-conduit >=1.0 && <2
-                     , stm >=2.4 && <2.5
-                     , suspend >=0.2 && <0.3
-                     , text >= 1.0 && <2.0
-                     , time >=1.4 && <1.5
-                     , timers >=0.2 && <0.3
-                     , unix >=2.6 && <2.7
-                     , vector >=0.10 && <0.11
+  ghc-options:         -O2 -threaded -rtsopts "-with-rtsopts=-N -A500M -G3 -qg1"
+  build-depends:       base >=4.6
+                     , aeson >=0.6
+                     , binary >=0.6
+                     , bytestring >=0.10
+                     , conduit >=1.0
+                     , conduit-extra >=1.1.0.3
+                     , data-binary-ieee754 >=0.4
+                     , directory >=1.2
+                     , filepath >=1.3
+                     , hashtables >=1.1
+                     , monadLib >=3.7
+                     , mtl >=2.1
+                     , network >=2.4
+                     , network-conduit >=1.0
+                     , stm >=2.4
+                     , suspend >=0.2
+                     , text >= 1.0
+                     , time >=1.4
+                     , timers >=0.2
+                     , unix >=2.6
+                     , vector >=0.10
 
 library
   default-language:    Haskell2010
@@ -52,26 +53,27 @@ library
                      , Util.Misc
                      , Util.Time
                      , Util.Words
-  build-depends:       base >=4.6 && <4.7
-                     , aeson >=0.6 && <0.7
-                     , binary >=0.6 && <0.7
-                     , bytestring >=0.10 && <0.11
-                     , conduit >=1.0 && <2
-                     , data-binary-ieee754 >=0.4 && <0.5
-                     , directory >=1.2 && <1.3
-                     , filepath >=1.3 && <1.4
-                     , hashtables >=1.1 && <1.2
-                     , monadLib >=3.7 && <3.8
-                     , mtl >=2.1 && <2.2
-                     , network >=2.4 && <2.5
-                     , network-conduit >=1.0 && <2
-                     , stm >=2.4 && <2.5
-                     , suspend >=0.2 && <0.3
-                     , text >= 1.0 && <2.0
-                     , time >=1.4 && <1.5
-                     , timers >=0.2 && <0.3
-                     , unix >=2.6 && <2.7
-                     , vector >=0.10 && <0.11
+  build-depends:       base >=4.6
+                     , aeson >=0.6
+                     , binary >=0.6
+                     , bytestring >=0.10
+                     , conduit >=1.0
+                     , conduit-extra >=1.1.0.3
+                     , data-binary-ieee754 >=0.4
+                     , directory >=1.2
+                     , filepath >=1.3
+                     , hashtables >=1.1
+                     , monadLib >=3.7
+                     , mtl >=2.1
+                     , network >=2.4
+                     , network-conduit >=1.0
+                     , stm >=2.4
+                     , suspend >=0.2
+                     , text >= 1.0
+                     , time >=1.4
+                     , timers >=0.2
+                     , unix >=2.6
+                     , vector >=0.10
 
 test-suite all
     default-language:  Haskell2010
@@ -79,22 +81,25 @@ test-suite all
     cpp-options:       -DTEST
     hs-source-dirs:    test, .
     main-is:           Tests.hs
-    build-depends:     base
-                     , aeson >=0.6 && <0.7
-                     , binary >=0.6 && <0.7
-                     , bytestring >=0.10 && <0.11
-                     , data-binary-ieee754 >=0.4 && <0.5
-                     , directory >=1.2 && <1.3
-                     , filepath >=1.3 && <1.4
-                     , hashtables >=1.1 && <1.2
-                     , hspec
-                     , monadLib >=3.7 && <3.8
-                     , mtl >=2.1 && <2.2
-                     , network >=2.4 && <2.5
-                     , stm >=2.4 && <2.5
-                     , suspend >=0.2 && <0.3
-                     , text >= 1.0 && <2.0
-                     , time >=1.4 && <1.5
-                     , timers >=0.2 && <0.3
-                     , unix >=2.6 && <2.7
-                     , vector >=0.10 && <0.11
+    build-depends:     hspec
+                     , base
+                     , aeson >=0.6
+                     , binary >=0.6
+                     , bytestring >=0.10
+                     , conduit >=1.0
+                     , conduit-extra >=1.1.0.3
+                     , data-binary-ieee754 >=0.4
+                     , directory >=1.2
+                     , filepath >=1.3
+                     , hashtables >=1.1
+                     , monadLib >=3.7
+                     , mtl >=2.1
+                     , network >=2.4
+                     , network-conduit >=1.0
+                     , stm >=2.4
+                     , suspend >=0.2
+                     , text >= 1.0
+                     , time >=1.4
+                     , timers >=0.2
+                     , unix >=2.6
+                     , vector >=0.10

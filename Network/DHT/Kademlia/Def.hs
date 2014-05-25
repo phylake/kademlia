@@ -134,16 +134,16 @@ instance FromJSON Config where
     (v .:? "dataStore" .!= HashTables)
   parseJSON _ = mzero
 
-{- | RPC Store's data chunks -}
+-- | RPC Store's data chunks
 type StoreHT = H.BasicHashTable B.ByteString (TVar (V.Vector B.ByteString))
 
 data KademliaEnv = KademliaEnv {
                                  config :: Config
-                               , mvDataStore :: MVar DataStore
+                               , dataStore :: DataStore
                                , rt :: RoutingTable
                                , mvStoreHT :: MVar StoreHT
-                               , thisPeer :: Peer
-                               , pingREQs :: TVar (V.Vector (UTCTime, Peer))
+                               , thisPeer :: Peer -- ^ this node's address
+                               , pingREQs :: TVar (V.Vector (UTCTime, Peer)) -- ^ outstanding ping requests originating from this node
                                , sock :: Socket
                                --, rpc :: RPCHooks
                                }
@@ -160,9 +160,10 @@ data DataStore = DataStore {
 defaultDataStore :: IO DataStore
 defaultDataStore = do
   (ht :: H.BasicHashTable B.ByteString B.ByteString) <- H.new
+  mv <- newMVar ht
   return $ DataStore {
-    dsSet = H.insert ht
-  , dsGet = H.lookup ht
+    dsSet = (\k v -> withMVar mv $ \ht -> H.insert ht k v)
+  , dsGet = (\k -> withMVar mv $ \ht -> H.lookup ht k)
   }
 
 -- | Node ids and keys are synonymous
@@ -237,7 +238,7 @@ instance FromJSON SockAddr where
 --  except that live nodes are never removed from the list"
 data KBucket = KBucket {
                          -- TODO how is lock optimism affected for reads on Peer
-                         --      when there are frequent writes to LastSeen
+                         --      when there are frequent writes to LastSeen?
                          kContent :: V.Vector (Peer, LastSeen) -- ^ Sorted by LastSeen
                        , kMinRange :: Double
                        , kMaxRange :: Double
@@ -271,7 +272,7 @@ writeRoutingTable fp rt = atomically (V.mapM readTVar rt) >>=
 
 readRoutingTable :: FilePath -> IO RoutingTable
 readRoutingTable fp = do
-  (mBuckets :: Maybe [KBucket]) <- BL.readFile fp >>= return . JSON.decode
+  (mBuckets :: Maybe [KBucket]) <- liftM JSON.decode $ BL.readFile fp
   case mBuckets of
     Nothing -> atomically $ defaultRoutingTable Nothing
     Just buckets -> do

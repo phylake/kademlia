@@ -7,10 +7,10 @@ import           Control.Concurrent
 import           Control.Concurrent.STM
 import           Control.Concurrent.Timer
 import           Control.Monad
-import           Data.Aeson as JSON
 import           Data.Binary
 import           Data.Conduit
 import           Data.Conduit.Network
+import           Data.Time.Clock
 import           Data.Vector ((!), (//))
 import           Network.DHT.Kademlia.Bucket
 import           Network.DHT.Kademlia.Def

@@ -15,18 +15,18 @@ import           Data.Vector ((!), (//))
 import           Network.DHT.Kademlia.Bucket
 import           Network.DHT.Kademlia.Def
 import           Network.DHT.Kademlia.Util
-import qualified Data.Conduit.Binary as CB
-import qualified Data.Conduit.List as CL
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Char8 as BC
 import qualified Data.ByteString.Lazy as BL
+import qualified Data.Conduit.Binary as CB
+import qualified Data.Conduit.List as CL
 import qualified Data.HashTable.IO as H
 import qualified Data.Text as T
 import qualified Data.Vector as V
 
 -- | Outstanding PING requests that timeout need to update k-buckets accordingly
 pingREQReaper :: KademliaEnv -> IO ()
-pingREQReaper (KademliaEnv{..}) = forkIO_ $ forever $ do
+pingREQReaper KademliaEnv{..} = forkIO_ $ forever $ do
   threadDelay $ secToMicro 2 -- should be >= threshold
   now <- getCurrentTime
   atomically $ do
@@ -42,7 +42,7 @@ pingREQReaper (KademliaEnv{..}) = forkIO_ $ forever $ do
     
     fBucket :: V.Vector Peer -> TVar KBucket -> STM ()
     fBucket expired tv = do
-      kb@(KBucket{..}) <- readTVar tv
+      kb@KBucket{..} <- readTVar tv
       writeTVar tv $ kb {kContent = V.filter (fContent expired) kContent}
     
     fContent :: V.Vector Peer -> (Peer, LastSeen) -> Bool

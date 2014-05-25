@@ -11,6 +11,7 @@ import           Data.Aeson as JSON
 import           Data.Binary
 import           Data.Conduit
 import           Data.Conduit.Network
+import           Data.Time.Clock
 import           Data.Vector ((!), (//))
 import           Network.DHT.Kademlia.Bucket
 import           Network.DHT.Kademlia.Def
@@ -30,8 +31,8 @@ import qualified Data.Vector as V
 --
 -- > echo routes | netcat localhost 6000
 interactive :: KademliaEnv -> IO ()
-interactive (KademliaEnv{..}) = forkIO_ $ do
-  runTCPServer (serverSettings 6000 HostIPv4) app
+interactive KademliaEnv{..} = forkIO_ $ do
+  runTCPServer (serverSettings 6000 "!4") app
   where
     app req = do
       bs <- appSource req $$

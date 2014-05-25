@@ -44,14 +44,14 @@ runKademlia config@(Config{..}) = do
                            inet_addr "127.0.0.1"
 
 
-  mvDataStore <- defaultDataStore >>= newMVar
+  dataStore <- defaultDataStore
   mvStoreHT <- H.new >>= newMVar
   pingREQs <- atomically $ newTVar V.empty
 
   (rt :: RoutingTable) <- readRoutingTable $ T.unpack cfgRoutingTablePath
   joinNetwork rt sock
 
-  let env :: KademliaEnv = KademliaEnv{..}
+  let env = KademliaEnv{..}
 
   -- WORKERS
   interactive env
@@ -71,12 +71,11 @@ runKademlia config@(Config{..}) = do
   return ()
 
 loop :: KademliaEnv -> IO ()
-loop (KademliaEnv{..}) = forever $ do
+loop KademliaEnv{..} = forever $ do
   (bs, sockAddr) <- NB.recvFrom sock recvBytes
   forkIO $ do
     let send = flip (NB.sendAllTo sock) sockAddr . BL.toStrict . encode
-    let rpc :: RPC = decode $ BL.fromStrict bs
-    case rpc of
+    case decode $ BL.fromStrict bs of
       RPC_PING_REQ thatPeer -> do
         now <- getCurrentTime
         atomically $ do
@@ -102,8 +101,7 @@ loop (KademliaEnv{..}) = forever $ do
           void $ addPeer thisPeer rt thatPeer
         else
           putStrLn "[WARNING] got a PING_REP from an unknown peer"
-      RPC_STORE_REQ k n m l bs -> do
-        -- TODO only lock on write?
+      RPC_STORE_REQ k n m _ bs -> do
         storeHT <- takeMVar mvStoreHT -- TAKE
         mtvVec <- H.lookup storeHT k
         tvVec <- case mtvVec of
@@ -127,9 +125,8 @@ loop (KademliaEnv{..}) = forever $ do
             H.delete storeHT k
             putMVar mvStoreHT storeHT -- PUT
 
-            dataStore@(DataStore{..}) <- takeMVar mvDataStore -- TAKE
-            dsSet k value
-            putMVar mvDataStore dataStore -- PUT
+            -- store key-value pair
+            (dsSet dataStore) k value
         return ()
       RPC_FIND_NODE _ -> do
         return ()
@@ -145,9 +142,7 @@ rpcStore :: KademliaEnv
          -> B.ByteString -- ^ key
          -> IO ()
 rpcStore KademliaEnv{..} Peer{..} key = do
-  dataStore@(DataStore{..}) <- takeMVar mvDataStore
-  mVal <- dsGet key
-  putMVar mvDataStore dataStore
+  mVal <- (dsGet dataStore) key
   case mVal of
     Nothing -> return ()
     Just v -> do
