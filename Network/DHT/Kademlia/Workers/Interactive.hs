@@ -39,7 +39,8 @@ interactive KademliaEnv{..} = forkIO_ $ do
             CB.takeWhile (/= newline) =$ CL.consume >>= return . BL.fromChunks
       case bs of
         "routes" -> do
-          rt2 <- atomically $ V.mapM readTVar rt
+          rt2 <- liftM (V.takeWhile (/= defaultKBucket)) $
+                 atomically $ V.mapM readTVar rt
           CB.sourceLbs (JSON.encode rt2) $$ appSink req
         otherwise -> CB.sourceLbs usage $$ appSink req
 

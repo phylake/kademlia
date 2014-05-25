@@ -17,6 +17,9 @@ kBucket = describe "k-bucket" $ do
 
 routingTable :: Spec
 routingTable = describe "routing table" $ do
+  describe "empty bucket behavior" $ do
+    it "adds the first peer to the only k-bucket" $
+      addFirstPeer `shouldReturn` True
   describe "full bucket behavior" $ do
     it "splits at index 0 into 2 buckets at indices 0 and 1" $
       (rtOneFullBucket >>= split) `shouldReturn` (leftKBucket, rightKBucket)
@@ -35,6 +38,32 @@ thisNode = defaultPeer {nodeId = 1}
 splitBucket = rightKBucket {
   kContent = V.fromList [(newPeer, LastSeen 0)]
 }
+
+addFirstPeer :: IO Bool
+addFirstPeer = do
+  rt <- atomically $ do
+    rt <- defaultRoutingTable Nothing
+    writeTVar (rt ! 0) newKBucket
+    return rt
+  e <- addPeer thisPeer rt thatPeer
+  case e of
+    Left _ -> return False
+    Right _ -> do
+      rt' <- stripSTM rt
+      return $ newKBucketWithPeer ~= (rt' ! 0)
+  where
+    thisPeer = defaultPeer {nodeId = 3}
+    thatPeer = defaultPeer {nodeId = 1}
+    newKBucket = KBucket {
+      kContent = V.fromList []
+    , kMinRange = 0
+    , kMaxRange = 2 ** systemBits
+    }
+    newKBucketWithPeer = KBucket {
+      kContent = V.fromList [(thatPeer, LastSeen 0)]
+    , kMinRange = 0
+    , kMaxRange = 2 ** systemBits
+    }
 
 addPeerInRange :: Peer -> RoutingTable -> IO Bool
 addPeerInRange thatNode rt = do

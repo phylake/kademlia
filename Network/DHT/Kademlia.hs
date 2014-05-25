@@ -29,12 +29,13 @@ import qualified Data.Vector as V
 import qualified Network.Socket.ByteString as NB
 
 runKademlia :: Config -> IO ()
-runKademlia config@(Config{..}) = do
+runKademlia config@Config{..} = do
   -- init networking
   -- apparently this is also needed on unix if -threaded is absent
   -- http://hackage.haskell.org/package/network-2.4.0.1/docs/Network-Socket.html#v:withSocketsDo
   withSocketsDo $ return ()
 
+  -- BEGIN env
   sock <- socket AF_INET Datagram defaultProtocol
 
   let thisPeer@(Peer thisNodeId (SockAddrInet cfgPort cfgHost)) = cfgThisNode
@@ -47,11 +48,13 @@ runKademlia config@(Config{..}) = do
   dataStore <- defaultDataStore
   mvStoreHT <- H.new >>= newMVar
   pingREQs <- atomically $ newTVar V.empty
-
-  (rt :: RoutingTable) <- readRoutingTable $ T.unpack cfgRoutingTablePath
-  joinNetwork rt sock
+  rt <- readRoutingTable $ T.unpack cfgRoutingTablePath
 
   let env = KademliaEnv{..}
+  -- END env
+
+  -- JOIN network
+  joinNetwork env cfgSeedNode
 
   -- WORKERS
   interactive env
@@ -160,8 +163,10 @@ rpcStore KademliaEnv{..} Peer{..} key = do
 --  lookup for its own node ID. Finally, u refreshes all k-buckets further away
 --  than its closest neighbor. During the refreshes, u both populates its own
 --  k-buckets and inserts itself into other nodes' k-buckets as necessary"
-joinNetwork :: RoutingTable -> Socket -> IO ()
-joinNetwork rt sock = do
-  kbs <- liftM (V.takeWhile (/= defaultKBucket)) $
-         atomically $ V.mapM readTVar rt
+joinNetwork :: KademliaEnv -> Peer -> IO ()
+joinNetwork KademliaEnv{..} seed = do
+  e <- addPeer thisPeer rt seed
+  case e of
+    Right () -> putStrLn "joinNetwork"
+    Left err -> putStrLn err
   return ()

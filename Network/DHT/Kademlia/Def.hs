@@ -59,6 +59,7 @@ import           Data.Time.Clock
 import           Data.Vector ((!))
 import           GHC.Generics
 import           Network.Socket (SockAddr(..), PortNumber(..), Socket(..))
+import           System.Directory
 import           Util.Integral
 import           Util.Time
 import           Util.Words
@@ -272,9 +273,13 @@ writeRoutingTable fp rt = atomically (V.mapM readTVar rt) >>=
 
 readRoutingTable :: FilePath -> IO RoutingTable
 readRoutingTable fp = do
-  (mBuckets :: Maybe [KBucket]) <- liftM JSON.decode $ BL.readFile fp
+  exists <- doesFileExist fp
+  (mBuckets :: Maybe [KBucket]) <- if exists
+    then liftM JSON.decode $ BL.readFile fp
+    else return Nothing
   case mBuckets of
     Nothing -> atomically $ defaultRoutingTable Nothing
+    Just [] -> atomically $ defaultRoutingTable Nothing
     Just buckets -> do
       let remainderLen = Just $ fromIntegral systemBits - length buckets
       atomically $ do
