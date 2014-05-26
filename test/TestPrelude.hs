@@ -4,14 +4,15 @@ module TestPrelude (
 , module Data.Vector
 , module Network.DHT.Kademlia.Bucket
 , module Network.DHT.Kademlia.Def
-, module Network.Socket
 , module Test.Hspec
 , module TestEq
-, module Data.Vector
 
 , addNodeSimple
 , stripSTM
 , defaultNode
+, fullKBucket
+, leftKBucket
+, rightKBucket
 ) where
 
 import           Control.Concurrent.STM
@@ -38,3 +39,24 @@ stripSTM :: RoutingTable -> IO (V.Vector KBucket)
 stripSTM = V.mapM (atomically . readTVar)
 
 defaultNode = Node 0 $ SockAddrUnix ""
+
+fullKBucket = KBucket {
+  kContent = fullContent
+, kMinRange = 0
+, kMaxRange = 8
+}
+
+leftKBucket = KBucket {
+  kContent = fullContent
+, kMinRange = 0
+, kMaxRange = 4
+}
+
+rightKBucket = KBucket {
+  kContent = V.fromList []
+, kMinRange = 4
+, kMaxRange = 8
+}
+
+fullContent = V.generate systemK genF where
+  genF i = (defaultNode {nodeId = fromIntegral i}, LastSeen 0)

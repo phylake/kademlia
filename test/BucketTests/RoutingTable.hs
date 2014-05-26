@@ -14,23 +14,23 @@ routingTable = describe "routing table" $ do
       addNodeSimple 7 [0,1,2,3,4,5,6] `shouldReturn` [[0,1],[4,5],[6]]
   
   describe "node 0 adding" $ do
-    it "[5,4]" $
+    it "[5,4] yields [[5,4], [], []]" $
       addNodeSimple 0 [5,4] `shouldReturn` [[5,4], [], []]
-    it "[5,4,3]" $ 
+    it "[5,4,3] yields [[3], [5,4], []]" $
       addNodeSimple 0 [5,4,3] `shouldReturn` [[3], [5,4], []]
-    it "[5,4,3,2]" $ 
+    it "[5,4,3,2] yields [[3,2], [5,4], []]" $
       addNodeSimple 0 [5,4,3,2] `shouldReturn` [[3,2], [5,4], []]
-    it "[5,4,3,2,1,6]" $
+    it "[5,4,3,2,1,6] yields [[1], [3,2], [5,4]]" $
       addNodeSimple 0 [5,4,3,2,1,6] `shouldReturn` [[1], [3,2], [5,4]]
-    it "[5,4,3,2,1,6,7]" $
+    it "[5,4,3,2,1,6,7] yields [[1], [3,2], [5,4]]" $
       addNodeSimple 0 [5,4,3,2,1,6,7] `shouldReturn` [[1], [3,2], [5,4]]
-    it "[2,4]" $
+    it "[2,4] yields [[2,4], [], []]" $
       addNodeSimple 0 [2,4] `shouldReturn` [[2,4], [], []]
-    it "[2,4,5]" $
+    it "[2,4,5] yields [[2], [4,5], []]" $
       addNodeSimple 0 [2,4,5] `shouldReturn` [[2], [4,5], []]
-    it "[2,4,5,3]" $
+    it "[2,4,5,3] yields [[2,3], [4,5], []]" $
       addNodeSimple 0 [2,4,5,3] `shouldReturn` [[2,3], [4,5], []]
-    it "[2,4,5,3,1]" $
+    it "[2,4,5,3,1] yields [[1], [2,3], [4,5]]" $
       addNodeSimple 0 [2,4,5,3,1] `shouldReturn` [[1], [2,3], [4,5]]
   
   describe "full bucket behavior" $ do
@@ -46,11 +46,6 @@ newNode = defaultNode {nodeId = 7} -- fullBucket range is 0-7
 
 thisNode :: Node
 thisNode = defaultNode {nodeId = 1}
-
--- the single bucket split and the newNode exists in it
-splitBucket = rightKBucket {
-  kContent = V.fromList [(newNode, LastSeen 0)]
-}
 
 addFirstNode :: IO Bool
 addFirstNode = do
@@ -77,13 +72,11 @@ addNodeInRange thatNode rt = do
       rt' <- stripSTM rt
       return $ leftKBucket ~= (rt' ! 0)
             && splitBucket ~= (rt' ! 1)
-
-splitDropBucket = rightKBucket {
-  kContent = V.fromList [
-    (defaultNode {nodeId = 6}, LastSeen 0)
-  , (defaultNode {nodeId = 7}, LastSeen 0)
-  ]
-}
+  where
+    -- the single bucket split and the newNode exists in it
+    splitBucket = rightKBucket {
+      kContent = V.fromList [(newNode, LastSeen 0)]
+    }
 
 addNodeDrop :: IO Bool
 addNodeDrop = do
@@ -102,6 +95,13 @@ addNodeDrop = do
       rt' <- stripSTM rt
       return $     leftKBucket ~= (rt' ! 0)
             && splitDropBucket ~= (rt' ! 1)
+  where
+    splitDropBucket = rightKBucket {
+      kContent = V.fromList [
+        (defaultNode {nodeId = 6}, LastSeen 0)
+      , (defaultNode {nodeId = 7}, LastSeen 0)
+      ]
+    }
 
 split :: RoutingTable -> IO (KBucket, KBucket)
 split rt = atomically $ do
@@ -115,22 +115,3 @@ rtOneFullBucket = atomically $ do
   rt <- defaultRoutingTable Nothing
   writeTVar (rt ! 0) fullKBucket
   return rt
-
-fullKBucket = KBucket {
-  kContent = fullContent
-, kMinRange = 0
-, kMaxRange = 2 ** systemBits
-}
-leftKBucket = KBucket {
-  kContent = fullContent
-, kMinRange = 0
-, kMaxRange = fromIntegral $ 2 ** systemBits / 2
-}
-rightKBucket = KBucket {
-  kContent = V.fromList []
-, kMinRange = fromIntegral $ 2 ** systemBits / 2
-, kMaxRange = 2 ** systemBits
-}
-
-fullContent = V.generate systemK genF where
-  genF i = (defaultNode {nodeId = fromIntegral i}, LastSeen 0)
