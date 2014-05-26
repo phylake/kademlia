@@ -3,6 +3,7 @@
 module Network.DHT.Kademlia.Bucket where
 
 import           Control.Concurrent.STM
+import           Control.Monad
 import           Data.Vector ((!), (//))
 import           Network.DHT.Kademlia.Def
 import           Network.DHT.Kademlia.Util
@@ -68,24 +69,43 @@ addNodeLoop xcalled this@(Node thisNodeId _) kbuckets that
 findKBucket :: Node -- ^ the node to find
             -> V.Vector (TVar KBucket)
             -> STM (Maybe (KBucket, Int)) -- ^ Maybe (found bucket, index)
-findKBucket (Node key _) vec = loop (V.length vec - 1) where
+findKBucket (Node key _) vec = loop 0 where
   loop idx
-    | idx < 0 = return Nothing
+    | idx >= V.length vec = return Nothing
     | otherwise = do
         kb@(KBucket{..}) <- readTVar $ vec ! idx
         if idInRange key kMinRange kMaxRange
           then return $ Just (kb, idx)
-          else loop (idx - 1)
+          else loop (idx + 1)
 
 splitKBucket :: Int -- ^ Index of bucket to split
              -> RoutingTable
              -> STM ()
 splitKBucket idx kbuckets = do
+  readTVar nextTKb >>= shiftBuckets (V.drop (idx+1) kbuckets)
   kb <- readTVar (kbuckets ! idx)
   let (kbl, kbr) = splitKBucketImpl kb
-  writeTVar (kbuckets !  idx     ) kbl
-  writeTVar (kbuckets ! (idx + 1)) kbr
+  writeTVar currTKb kbl
+  writeTVar nextTKb kbr
   return ()
+  where
+    currTKb = kbuckets !  idx
+    nextTKb = kbuckets ! (idx + 1)
+
+-- | If splitKBucket's idx is ever less than the greatest index of a non-default
+-- bucket then information is lost. The set of non-default buckets beginning
+-- at index idx need to be shifted to the right by 1
+shiftBuckets :: V.Vector (TVar KBucket) -> KBucket -> STM ()
+shiftBuckets kbuckets nextkb = V.foldM f nextkb kbuckets >> return ()
+  where
+    f :: KBucket -> TVar KBucket -> STM KBucket
+    f kb tvKb = if kb == defaultKBucket
+      -- don't care about defaultKBuckets so avoid transactions on the TVar
+      then return kb
+      else do
+        kb2 <- readTVar tvKb
+        writeTVar tvKb kb
+        return kb2
 
 splitKBucketImpl :: KBucket -> (KBucket, KBucket)
 splitKBucketImpl KBucket{..} = (lBucket, rBucket)

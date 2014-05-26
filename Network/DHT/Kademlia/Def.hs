@@ -231,7 +231,7 @@ instance FromJSON SockAddr where
     v .: "host"
   parseJSON _ = mzero
 
--- | range is [kMinRange, kMaxRange)
+-- | range is [kMinRange, kMaxRange) == kMinRange ≤ range < kMaxRange
 -- 
 -- tail is most recently seen, head is least recently seen
 -- 

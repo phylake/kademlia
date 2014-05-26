@@ -1,7 +1,7 @@
 module BucketTests (kBucket, routingTable) where
 
 import           Control.Concurrent.STM
-import           Control.Monad (liftM2)
+import           Control.Monad
 import           Data.Vector ((!), (//))
 import           Network.DHT.Kademlia.Bucket
 import           Network.DHT.Kademlia.Def hiding (thisNode)
@@ -20,6 +20,31 @@ routingTable = describe "routing table" $ do
   describe "empty bucket behavior" $ do
     it "adds the first node to the only k-bucket" $
       addFirstNode `shouldReturn` True
+  
+  describe "node 7 adding" $ do
+    it "[0,1,2,3,4,5,6]" $
+      fillUpTable 7 [0,1,2,3,4,5,6] `shouldReturn` [[0,1],[4,5],[6]]
+  
+  describe "node 0 adding" $ do
+    it "[5,4]" $
+      fillUpTable 0 [5,4] `shouldReturn` [[5,4], [], []]
+    it "[5,4,3]" $ 
+      fillUpTable 0 [5,4,3] `shouldReturn` [[3], [5,4], []]
+    it "[5,4,3,2]" $ 
+      fillUpTable 0 [5,4,3,2] `shouldReturn` [[3,2], [5,4], []]
+    it "[5,4,3,2,1,6]" $
+      fillUpTable 0 [5,4,3,2,1,6] `shouldReturn` [[1], [3,2], [5,4]]
+    it "[5,4,3,2,1,6,7]" $
+      fillUpTable 0 [5,4,3,2,1,6,7] `shouldReturn` [[1], [3,2], [5,4]]
+    it "[2,4]" $
+      fillUpTable 0 [2,4] `shouldReturn` [[2,4], [], []]
+    it "[2,4,5]" $
+      fillUpTable 0 [2,4,5] `shouldReturn` [[2], [4,5], []]
+    it "[2,4,5,3]" $
+      fillUpTable 0 [2,4,5,3] `shouldReturn` [[2,3], [4,5], []]
+    it "[2,4,5,3,1]" $
+      fillUpTable 0 [2,4,5,3,1] `shouldReturn` [[1], [2,3], [4,5]]
+  
   describe "full bucket behavior" $ do
     it "splits at index 0 into 2 buckets at indices 0 and 1" $
       (rtOneFullBucket >>= split) `shouldReturn` (leftKBucket, rightKBucket)
@@ -27,9 +52,15 @@ routingTable = describe "routing table" $ do
       (rtOneFullBucket >>= addNodeInRange newNode) `shouldReturn` True
     it "drops node when bucket is full and node's id is not in this node's range" $
       addNodeDrop `shouldReturn` True
-  --describe "full table behavior" $ do
-  --  it "node ids outside range are ignored"
-  --    True `shouldBe` True
+
+fillUpTable :: Double -> [Double] -> IO [[Double]]
+fillUpTable thisId otherIds = do
+  rt <- atomically $ defaultRoutingTable Nothing
+  forM_ otherIds $ \i -> addNode thisNode rt defaultNode {nodeId = i}
+  rt2 <- stripSTM rt
+  return $ map (map (nodeId . fst) . V.toList . kContent) $ V.toList rt2
+  where
+    thisNode = defaultNode {nodeId = thisId}
 
 newNode :: Node
 newNode = defaultNode {nodeId = 7} -- fullBucket range is 0-7
