@@ -20,4 +20,4 @@ instance TestEq KBucket where
 
 instance (TestEq a) => TestEq (V.Vector a) where
   a ~= b = V.length a == V.length b
-        && (V.all (\(a, b) -> a ~= b) $ V.zip a b)
+        && (V.all (uncurry (~=)) $ V.zip a b)

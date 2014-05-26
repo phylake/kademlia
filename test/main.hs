@@ -3,12 +3,7 @@ module Main where
 
 import           BucketTests
 import           SerializationTests
-
-import           Control.Concurrent.STM
-import           Control.Monad (liftM2)
-import           Network.DHT.Kademlia.Def
-import           Test.Hspec
-import qualified Data.Vector as V
+import           TestPrelude
 
 main :: IO ()
 main = hspec $ 
