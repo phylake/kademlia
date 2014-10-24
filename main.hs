@@ -16,8 +16,9 @@ main :: IO ()
 main = do
   args <- getArgs
   case args of
+    [] -> usage
     ["--help"] -> usage
-    ["gen_conf"] -> do
+    ["--gen-conf"] -> do
       putStrLn $ unlines [
           "{"
         , "  \"routingTablePath\": \"routes.json\","
@@ -49,6 +50,15 @@ main = do
 
 usage :: IO ()
 usage = do
+  putStrLn "KADEMLIA(1)                         Kademlia Manual                        KADEMLIA(1)"
+  putStrLn ""
+  putStrLn "NAME"
+  putStrLn "     kademlia -- distributed hashtable"
+  putStrLn ""
+  putStrLn "SYNOPSIS"
+  putStrLn "     kademlia [--help] [--gen-conf] [config file ...]"
+  putStrLn ""
+  putStrLn "DESCRIPTION"
+  putStrLn "     Kademila is an implementation of the Kademlia Distributed Hash Table (DHT) in Haskell"
   putStrLn ""
   exitFailure
-

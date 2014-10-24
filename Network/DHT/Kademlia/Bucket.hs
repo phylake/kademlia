@@ -73,7 +73,7 @@ findKBucket (Node key _) vec = loop 0 where
   loop idx
     | idx >= V.length vec = return Nothing
     | otherwise = do
-        kb@(KBucket{..}) <- readTVar $ vec ! idx
+        kb@KBucket{..} <- readTVar $ vec ! idx
         if idInRange key kMinRange kMaxRange
           then return $ Just (kb, idx)
           else loop (idx + 1)

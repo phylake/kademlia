@@ -39,7 +39,7 @@ module Network.DHT.Kademlia.Def (
 , readRoutingTable
 
 , RPC(RPC_PING_REQ,
-      RPC_PING_REP,
+      RPC_PING_RES,
       RPC_STORE_REQ,
       RPC_FIND_NODE,
       RPC_FOUND_NODE,
@@ -100,11 +100,13 @@ systemBytes = fromIntegral $ systemBits/8
 recvBytes :: Int
 recvBytes = 548
 
--- | >   recvBytes
--- | > - rpc header
--- | > - key length
--- | > - sequence number
--- | > - total chunks
+-- | The size in bytes of a Kademlia chunk of data
+-- 
+-- >   recvBytes
+-- > - rpc header
+-- > - key length
+-- > - sequence number
+-- > - total chunks
 chunkBytes :: Int
 chunkBytes = recvBytes - 1 - systemBytes - 4 - 4 - 2
 
@@ -135,7 +137,7 @@ instance FromJSON Config where
     (v .:? "dataStore" .!= HashTables)
   parseJSON _ = mzero
 
--- | RPC Store's data chunks
+-- | RPC Store's data chunks keyed on the hash of the data being sent
 type StoreHT = H.BasicHashTable B.ByteString (TVar (V.Vector B.ByteString))
 
 data KademliaEnv = KademliaEnv {
@@ -297,7 +299,7 @@ data RPCHooks = RPCHooks {
 
 data RPC = RPC_UNKNOWN
          | RPC_PING_REQ Node
-         | RPC_PING_REP Node
+         | RPC_PING_RES Node
          | RPC_STORE_REQ B.ByteString -- ^ key
                          Word32 -- ^ chunk sequence number
                          Word32 -- ^ chunk total
@@ -308,11 +310,12 @@ data RPC = RPC_UNKNOWN
          | RPC_FIND_VALUE
          deriving (Show, Eq)
 
+-- TODO NOT Binary it adds bytes I didn't expect (custom serialization format)
 instance Binary RPC where
   put (RPC_PING_REQ node) = do
     putWord8 1
     put node
-  put (RPC_PING_REP node) = do
+  put (RPC_PING_RES node) = do
     putWord8 2
     put node
   put (RPC_STORE_REQ k n m l bs) = do
@@ -342,7 +345,7 @@ instance Binary RPC where
     w <- getWord8
     case w of
       1 -> liftM RPC_PING_REQ get
-      2 -> liftM RPC_PING_REP get
+      2 -> liftM RPC_PING_RES get
       3 -> do
         key <- replicateM systemBytes getWord8 >>= return . B.pack
         (n :: Word32) <- replicateM 4 getWord8 >>= return . toWord32

@@ -26,8 +26,7 @@ import qualified Data.Vector as V
 
 persistRoutingTable :: KademliaEnv -> IO ()
 persistRoutingTable (KademliaEnv{..}) = forkIO_ $ forever $ do
-  --threadDelay $ secToMicro 10
-  threadDelay $ secToMicro 1
+  threadDelay $ secToMicro 10
   writeRoutingTable fp rt
   where
     fp :: FilePath

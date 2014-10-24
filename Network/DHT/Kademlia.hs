@@ -45,7 +45,7 @@ runKademlia config@Config{..} = do
                            inet_addr "127.0.0.1"
 
 
-  dataStore <- defaultDataStore
+  dataStore <- defaultDataStore -- TODO use cfgDSType
   mvStoreHT <- H.new >>= newMVar
   pingREQs <- atomically $ newTVar V.empty
   rt <- readRoutingTable $ T.unpack cfgRoutingTablePath
@@ -74,70 +74,74 @@ runKademlia config@Config{..} = do
   return ()
 
 loop :: KademliaEnv -> IO ()
-loop KademliaEnv{..} = forever $ do
-  (bs, sockAddr) <- NB.recvFrom sock recvBytes
+loop env = forever $ do
+  (bs, sockAddr) <- NB.recvFrom (sock env) recvBytes
   forkIO $ do
-    let send = flip (NB.sendAllTo sock) sockAddr . BL.toStrict . encode
-    case decode $ BL.fromStrict bs of
-      RPC_PING_REQ thatNode -> do
-        now <- getCurrentTime
-        atomically $ do
-          pings <- readTVar pingREQs
-          writeTVar pingREQs $ V.snoc pings (now, thatNode)
-        send $ RPC_PING_REP thisNode
-      RPC_PING_REP thatNode -> do
-        foundNode <- atomically $ do
-          pings <- readTVar pingREQs
-          let f = (\(bool, v) t@(_, p) -> case bool of
-                                            True -> return (True, V.snoc v t)
-                                            False -> if p == thatNode
-                                              then return (True, v)
-                                              else return (False, V.snoc v t))
-          (foundNode, pings') <- V.foldM f (False, V.empty) pings
-          if foundNode then
-            writeTVar pingREQs pings'
-          else
-            -- nothing to do but write back old value
-            writeTVar pingREQs pings
-          return foundNode
+    let send = flip (NB.sendAllTo $ sock env) sockAddr . BL.toStrict . encode
+    testableLoop env send bs
+
+testableLoop :: KademliaEnv -> (RPC -> IO ()) -> B.ByteString -> IO ()
+testableLoop KademliaEnv{..} send bs = do
+  case decode $ BL.fromStrict bs of
+    RPC_PING_REQ thatNode -> do
+      now <- getCurrentTime
+      atomically $ do
+        pings <- readTVar pingREQs
+        writeTVar pingREQs $ V.snoc pings (now, thatNode)
+      send $ RPC_PING_RES thisNode
+    RPC_PING_RES thatNode -> do
+      foundNode <- atomically $ do
+        pings <- readTVar pingREQs
+        let f = (\(bool, v) t@(_, p) -> case bool of
+                                          True -> return (True, V.snoc v t)
+                                          False -> if p == thatNode
+                                            then return (True, v)
+                                            else return (False, V.snoc v t))
+        (foundNode, pings') <- V.foldM f (False, V.empty) pings
         if foundNode then
-          void $ addNode thisNode rt thatNode
+          writeTVar pingREQs pings'
         else
-          putStrLn "[WARNING] got a PING_REP from an unknown node"
-      RPC_STORE_REQ k n m _ bs -> do
-        storeHT <- takeMVar mvStoreHT -- TAKE
-        mtvVec <- H.lookup storeHT k
-        tvVec <- case mtvVec of
-          Just tvVec -> return tvVec
-          Nothing -> do
-            tvVec <- atomically $ newTVar $ V.replicate (fromIntegral m) B.empty
-            H.insert storeHT k tvVec
-            return tvVec
-        putMVar mvStoreHT storeHT -- PUT
+          -- nothing to do but write back old value
+          writeTVar pingREQs pings
+        return foundNode
+      if foundNode then
+        void $ addNode thisNode rt thatNode
+      else
+        putStrLn "[WARNING] got a PING_REP from an unknown node"
+    RPC_STORE_REQ k n m _ bs -> do
+      storeHT <- takeMVar mvStoreHT -- TAKE
+      mtvVec <- H.lookup storeHT k
+      tvVec <- case mtvVec of
+        Just tvVec -> return tvVec
+        Nothing -> do
+          tvVec <- atomically $ newTVar $ V.replicate (fromIntegral m) B.empty
+          H.insert storeHT k tvVec
+          return tvVec
+      putMVar mvStoreHT storeHT -- PUT
 
-        mAssm <- atomically $ do
-          vec <- readTVar tvVec
-          let vec' = vec // [(fromIntegral n, bs)]
-          writeTVar tvVec vec'
-          return $ tryReassemble vec'
+      mAssm <- atomically $ do
+        vec <- readTVar tvVec
+        let vec' = vec // [(fromIntegral n, bs)]
+        writeTVar tvVec vec'
+        return $ tryReassemble vec'
 
-        case mAssm of
-          Nothing -> return ()
-          Just value -> do
-            storeHT <- takeMVar mvStoreHT -- TAKE
-            H.delete storeHT k
-            putMVar mvStoreHT storeHT -- PUT
+      case mAssm of
+        Nothing -> return ()
+        Just value -> do
+          storeHT <- takeMVar mvStoreHT -- TAKE
+          H.delete storeHT k
+          putMVar mvStoreHT storeHT -- PUT
 
-            -- store key-value pair
-            (dsSet dataStore) k value
-        return ()
-      RPC_FIND_NODE _ -> do
-        return ()
-      RPC_FIND_VALUE -> do
-        return ()
-      _ -> do
-        putStrLn $ "received: " ++ (BC.unpack bs)
-        return ()
+          -- store key-value pair
+          (dsSet dataStore) k value
+      return ()
+    RPC_FIND_NODE _ -> do
+      return ()
+    RPC_FIND_VALUE -> do
+      return ()
+    _ -> do
+      putStrLn $ "received: " ++ (BC.unpack bs)
+      return ()
 
 -- | Store some data on another node by splitting up the data into chunks
 rpcStore :: KademliaEnv
@@ -155,7 +159,7 @@ rpcStore KademliaEnv{..} Node{..} key = do
       send chunk
       send $ RPC_PING_REQ thisNode
   where
-    send rpc = NB.sendAllTo sock (BL.toStrict $ encode rpc) location
+    send = flip (NB.sendAllTo sock) location . BL.toStrict . encode
 
 -- | Bottom of 2.3
 -- "To join a network, a node u must have a contact to an already participating
@@ -164,9 +168,6 @@ rpcStore KademliaEnv{..} Node{..} key = do
 --  than its closest neighbor. During the refreshes, u both populates its own
 --  k-buckets and inserts itself into other nodes' k-buckets as necessary"
 joinNetwork :: KademliaEnv -> Node -> IO ()
-joinNetwork KademliaEnv{..} seed = do
-  e <- addNode thisNode rt seed
-  case e of
-    Right () -> putStrLn "joinNetwork"
-    Left err -> putStrLn err
-  return ()
+joinNetwork KademliaEnv{..} seed@Node{..} = send $ RPC_PING_REQ seed
+  where
+    send = flip (NB.sendAllTo sock) location . BL.toStrict . encode

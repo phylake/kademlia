@@ -58,7 +58,7 @@ rpcPING = describe "PING" $ do
     rpcREQ = RPC_PING_REQ node
 
     rpcREP :: RPC
-    rpcREP = RPC_PING_REP node
+    rpcREP = RPC_PING_RES node
 
 bEncodeDecode :: (Binary a) => a -> a
 bEncodeDecode = Bin.decode . Bin.encode
