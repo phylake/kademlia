@@ -1,6 +1,7 @@
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 module Network.DHT.Kademlia.Def (
@@ -60,6 +61,7 @@ import           Data.Vector ((!))
 import           GHC.Generics
 import           Network.Socket (SockAddr(..), PortNumber(..), Socket(..))
 import           System.Directory
+import           System.Log.FastLogger
 import           Util.Integral
 import           Util.Time
 import           Util.Words
@@ -126,6 +128,7 @@ data Config = Config {
                        cfgThisNode :: Node
                      , cfgSeedNode :: Node
                      , cfgRoutingTablePath :: Text
+                     , cfgLogDir :: String
                      , cfgDSType :: DataStoreType
                      }
 
@@ -134,6 +137,7 @@ instance FromJSON Config where
     v .: "thisNode" <*>
     v .: "seedNode" <*>
     v .: "routingTablePath" <*>
+    (v .:? "logDir" .!= "/var/log/kademlia") <*>
     (v .:? "dataStore" .!= HashTables)
   parseJSON _ = mzero
 
@@ -148,6 +152,10 @@ data KademliaEnv = KademliaEnv {
                                , thisNode :: Node -- ^ this node's address
                                , pingREQs :: TVar (V.Vector (UTCTime, Node)) -- ^ outstanding ping requests originating from this node
                                , sock :: Socket
+                               , logDebug :: (forall a. ToLogStr a => a -> IO ())
+                               , logInfo :: (forall a. ToLogStr a => a -> IO ())
+                               , logWarn :: (forall a. ToLogStr a => a -> IO ())
+                               , logError :: (forall a. ToLogStr a => a -> IO ())
                                --, rpc :: RPCHooks
                                }
 

@@ -8,18 +8,16 @@ import           Control.Concurrent
 import           Control.Concurrent.STM
 import           Control.Monad
 import           Data.Binary
+import           Data.Monoid
 import           Data.Time.Clock
-import           Data.Vector ((!), (//))
-import           Data.Word
-import           GHC.Conc.Sync (getNumCapabilities)
+import           Data.Vector ((//))
 import           Network.DHT.Kademlia.Bucket
 import           Network.DHT.Kademlia.Def
 import           Network.DHT.Kademlia.Util
 import           Network.DHT.Kademlia.Workers
 import           Network.Socket hiding (send)
-import           System.Environment
-import           System.Timeout
-import           Util.Integral
+import           System.FilePath ((</>))
+import           System.Log.FastLogger
 import qualified Data.ByteString as B
 import qualified Data.ByteString.Char8 as BC
 import qualified Data.ByteString.Lazy as BL
@@ -44,17 +42,38 @@ runKademlia config@Config{..} = do
   privateSockAddr <- liftM (SockAddrInet cfgPort) $
                            inet_addr "127.0.0.1"
 
-
   dataStore <- defaultDataStore -- TODO use cfgDSType
   mvStoreHT <- H.new >>= newMVar
   pingREQs <- atomically $ newTVar V.empty
   rt <- readRoutingTable $ T.unpack cfgRoutingTablePath
 
+#ifdef DEBUG
+  logDebugSet <- newStdoutLoggerSet defaultBufSize
+  logInfoSet <- newStdoutLoggerSet defaultBufSize
+  logWarnSet <- newStdoutLoggerSet defaultBufSize
+  logErrorSet <- newStdoutLoggerSet defaultBufSize
+#else
+  logInfoSet <- newFileLoggerSet defaultBufSize $ cfgLogDir </> "info.log"
+  logWarnSet <- newFileLoggerSet defaultBufSize $ cfgLogDir </> "warn.log"
+  logErrorSet <- newFileLoggerSet defaultBufSize $ cfgLogDir </> "error.log"
+#endif
+  forkIO $ forever $ do
+    threadDelay 1000000 -- 1s
+    flushLogStr logInfoSet
+    flushLogStr logWarnSet
+    flushLogStr logErrorSet
+#ifdef DEBUG
+    flushLogStr logDebugSet
+  let logDebug str = pushLogStr logInfoSet $ toLogStr str <> "\n"
+#else
+  let logDebug _ = return ()
+#endif
+  let logInfo str = pushLogStr logInfoSet $ toLogStr str <> "\n"
+  let logWarn str = pushLogStr logWarnSet $ toLogStr str <> "\n"
+  let logError str = pushLogStr logErrorSet $ toLogStr str <> "\n"
+
   let env = KademliaEnv{..}
   -- END env
-
-  -- JOIN network
-  joinNetwork env cfgSeedNode
 
   -- WORKERS
   interactive env
@@ -62,13 +81,19 @@ runKademlia config@Config{..} = do
   persistRoutingTable env
 
   -- BIND
+  logDebug $ "privateSockAddr " ++ show privateSockAddr
   bind sock privateSockAddr
-  putStrLn $ "Kademlia bound to " ++ show cfgPort
+  logInfo $ "Kademlia bound to " ++ show cfgPort
   caps <- getNumCapabilities
-  putStrLn $ "num capabilities [" ++ show caps ++ "]"
+  logInfo $ "num capabilities [" ++ show caps ++ "]"
   -- TODO see if there are any gains to be had here.
   --      i think recvFrom blocks across all threads making this useless
   --void $ replicateM (caps - 1) $ forkIO $ loop env sock
+  
+  -- JOIN network
+  joinNetwork env cfgSeedNode
+
+  -- MAIN LOOP
   loop env
 
   return ()
@@ -107,7 +132,7 @@ testableLoop KademliaEnv{..} send bs = do
       if foundNode then
         void $ addNode thisNode rt thatNode
       else
-        putStrLn "[WARNING] got a PING_REP from an unknown node"
+        logWarn ("got a PING_REP from an unknown node" :: BC.ByteString)
     RPC_STORE_REQ k n m _ bs -> do
       storeHT <- takeMVar mvStoreHT -- TAKE
       mtvVec <- H.lookup storeHT k
@@ -140,7 +165,7 @@ testableLoop KademliaEnv{..} send bs = do
     RPC_FIND_VALUE -> do
       return ()
     _ -> do
-      putStrLn $ "received: " ++ (BC.unpack bs)
+      logWarn $ "received: " ++ (BC.unpack bs)
       return ()
 
 -- | Store some data on another node by splitting up the data into chunks
@@ -171,3 +196,4 @@ joinNetwork :: KademliaEnv -> Node -> IO ()
 joinNetwork KademliaEnv{..} seed@Node{..} = send $ RPC_PING_REQ seed
   where
     send = flip (NB.sendAllTo sock) location . BL.toStrict . encode
+
