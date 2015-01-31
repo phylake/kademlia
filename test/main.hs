@@ -10,7 +10,6 @@ main = hspec $
   describe "Kademlia" $ do
     systemAssumptions
     tVarAssumptions
-    kBucket
     routingTable
     serialization
 

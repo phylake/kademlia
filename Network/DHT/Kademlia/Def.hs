@@ -248,15 +248,11 @@ instance FromJSON SockAddr where
 -- "k-buckets effectively implement a least-recently seen eviction policy,
 --  except that live nodes are never removed from the list"
 data KBucket = KBucket {
-                         -- TODO how is lock optimism affected for reads on Node
-                         --      when there are frequent writes to LastSeen?
                          kContent :: V.Vector (Node, LastSeen) -- ^ Sorted by LastSeen
-                       , kMinRange :: Double
-                       , kMaxRange :: Double
                        }
                        deriving (Show, Eq, Generic)
 
-defaultKBucket = KBucket {kContent = V.empty, kMinRange = 0, kMaxRange = 0}
+defaultKBucket = KBucket {kContent = V.empty}
 
 instance ToJSON KBucket where
 instance FromJSON KBucket where
@@ -269,10 +265,7 @@ type RoutingTable = V.Vector (TVar KBucket)
 -- of other buckets as they're split,
 -- and the bucket at index 0 contains the entire bit range
 defaultRoutingTable :: Maybe Int -> STM RoutingTable
-defaultRoutingTable mLen = do
-  rt <- V.replicateM systemBits' (newTVar defaultKBucket)
-  writeTVar (rt ! 0) $ defaultKBucket {kMaxRange = 2 ** systemBits}
-  return rt
+defaultRoutingTable mLen = V.replicateM systemBits' (newTVar defaultKBucket)
   where
     systemBits' = maybe (fromIntegral systemBits) id mLen
 

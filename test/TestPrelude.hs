@@ -42,20 +42,14 @@ defaultNode = Node 0 $ SockAddrUnix ""
 
 fullKBucket = KBucket {
   kContent = fullContent
-, kMinRange = 0
-, kMaxRange = 8
 }
 
 leftKBucket = KBucket {
   kContent = fullContent
-, kMinRange = 0
-, kMaxRange = 4
 }
 
 rightKBucket = KBucket {
   kContent = V.fromList []
-, kMinRange = 4
-, kMaxRange = 8
 }
 
 fullContent = V.generate systemK genF where

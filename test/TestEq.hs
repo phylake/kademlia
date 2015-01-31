@@ -12,11 +12,7 @@ instance TestEq Node where
   (Node a _) ~= (Node b _) = a == b -- ignore SockAddr
 
 instance TestEq KBucket where
-  (KBucket ac amin amax) ~= (KBucket bc bmin bmax) =
-       amin == bmin
-    && amax == bmax
-    -- ignore LastSeen
-    && V.map fst ac ~= V.map fst bc
+  (KBucket ac) ~= (KBucket bc) = V.map fst ac ~= V.map fst bc
 
 instance (TestEq a) => TestEq (V.Vector a) where
   a ~= b = V.length a == V.length b
