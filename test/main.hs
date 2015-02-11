@@ -1,7 +1,8 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 module Main where
 
-import           BucketTests
+import           RoutingTableTests
+import           RPCTests
 import           SerializationTests
 import           TestPrelude
 
@@ -12,6 +13,7 @@ main = hspec $
     tVarAssumptions
     routingTable
     serialization
+    rpcs
 
 tVarAssumptions :: Spec
 tVarAssumptions = describe "TVar" $ do

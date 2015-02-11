@@ -151,12 +151,14 @@ data KademliaEnv = KademliaEnv {
                                , mvStoreHT :: MVar StoreHT
                                , thisNode :: Node -- ^ this node's address
                                , pingREQs :: TVar (V.Vector (UTCTime, Node)) -- ^ outstanding ping requests originating from this node
-                               , sock :: Socket
                                , logDebug :: (forall a. ToLogStr a => a -> IO ())
                                , logInfo :: (forall a. ToLogStr a => a -> IO ())
                                , logWarn :: (forall a. ToLogStr a => a -> IO ())
                                , logError :: (forall a. ToLogStr a => a -> IO ())
                                --, rpc :: RPCHooks
+#ifndef TEST
+                               , sock :: Socket
+#endif
                                }
 
 -- | This is not thread safe you must add thread safety yourself
@@ -261,8 +263,7 @@ instance FromJSON KBucket where
 type RoutingTable = V.Vector (TVar KBucket)
 
 -- | Preallocated vector of length systemBits where
--- indices 1 through systemBits - 1 are empty buckets that will contain contents
--- of other buckets as they're split,
+-- indices 1 through systemBits - 1 are empty buckets
 -- and the bucket at index 0 contains the entire bit range
 defaultRoutingTable :: Maybe Int -> STM RoutingTable
 defaultRoutingTable mLen = V.replicateM systemBits' (newTVar defaultKBucket)

@@ -1,4 +1,4 @@
-module BucketTests.RoutingTable (routingTable) where
+module RoutingTableTests (routingTable) where
 
 import           TestPrelude
 import qualified Data.Vector as V
