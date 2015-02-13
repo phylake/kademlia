@@ -1,19 +1,13 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE ScopedTypeVariables #-}
 module Network.DHT.Kademlia.Workers.Interactive (interactive) where
 
-import           Control.Concurrent
 import           Control.Concurrent.STM
-import           Control.Concurrent.Timer
 import           Control.Monad
 import           Data.Aeson as JSON
 import           Data.Binary
 import           Data.Conduit
 import           Data.Conduit.Network
-import           Data.Time.Clock
-import           Data.Vector ((!), (//))
-import           Network.DHT.Kademlia.Bucket
 import           Network.DHT.Kademlia.Def
 import           Network.DHT.Kademlia.Util
 import qualified Data.ByteString as B
@@ -21,8 +15,6 @@ import qualified Data.ByteString.Char8 as BC
 import qualified Data.ByteString.Lazy as BL
 import qualified Data.Conduit.Binary as CB
 import qualified Data.Conduit.List as CL
-import qualified Data.HashTable.IO as H
-import qualified Data.Text as T
 import qualified Data.Vector as V
 
 -- | Interactive shell to inspect Kademlia
@@ -39,9 +31,9 @@ interactive KademliaEnv{..} = forkIO_ $ do
             CB.takeWhile (/= newline) =$ CL.consume >>= return . BL.fromChunks
       case bs of
         "routes" -> do
-          rt2 <- liftM (V.takeWhile (/= defaultKBucket)) $
-                 atomically $ V.mapM readTVar rt
-          CB.sourceLbs (JSON.encode rt2) $$ appSink req
+          routingTable2 <- liftM (V.takeWhile (/= defaultKBucket)) $
+                           atomically $ V.mapM readTVar routingTable
+          CB.sourceLbs (JSON.encode routingTable2) $$ appSink req
         otherwise -> CB.sourceLbs usage $$ appSink req
 
 newline :: Word8

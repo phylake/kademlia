@@ -9,14 +9,14 @@ import           TestPrelude
 main :: IO ()
 main = hspec $ 
   describe "Kademlia" $ do
-    systemAssumptions
-    tVarAssumptions
-    routingTable
-    serialization
-    rpcs
+    systemAssumptionsSpec
+    tVarAssumptionsSpec
+    routingTableSpec
+    serializationSpec
+    rpcSpec
 
-tVarAssumptions :: Spec
-tVarAssumptions = describe "TVar" $ do
+tVarAssumptionsSpec :: Spec
+tVarAssumptionsSpec = describe "TVar" $ do
   it "2 new TVars with equal contents are not equal" $
     twoTVarWithEqualContents `shouldReturn` True
   where
@@ -25,8 +25,8 @@ tVarAssumptions = describe "TVar" $ do
       (tv1, tv2) <- atomically $ liftM2 (,) (newTVar 1) (newTVar 1)
       return $ tv1 /= tv2
 
-systemAssumptions :: Spec
-systemAssumptions = describe "system assumptions" $ do
+systemAssumptionsSpec :: Spec
+systemAssumptionsSpec = describe "system assumptions" $ do
   it "systemK is 2" $ systemK `shouldBe` 2
   it "systemBits is 3" $ systemBits `shouldBe` 3
 

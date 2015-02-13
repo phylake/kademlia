@@ -145,9 +145,8 @@ instance FromJSON Config where
 type StoreHT = H.BasicHashTable B.ByteString (TVar (V.Vector B.ByteString))
 
 data KademliaEnv = KademliaEnv {
-                                 config :: Config
-                               , dataStore :: DataStore
-                               , rt :: RoutingTable
+                                 dataStore :: DataStore
+                               , routingTable :: RoutingTable
                                , mvStoreHT :: MVar StoreHT
                                , thisNode :: Node -- ^ this node's address
                                , pingREQs :: TVar (V.Vector (UTCTime, Node)) -- ^ outstanding ping requests originating from this node
@@ -156,9 +155,7 @@ data KademliaEnv = KademliaEnv {
                                , logWarn :: (forall a. ToLogStr a => a -> IO ())
                                , logError :: (forall a. ToLogStr a => a -> IO ())
                                --, rpc :: RPCHooks
-#ifndef TEST
                                , sock :: Socket
-#endif
                                }
 
 -- | This is not thread safe you must add thread safety yourself
@@ -205,7 +202,7 @@ instance ToJSON Node where
 instance FromJSON Node where
 
 instance Binary Node where
-  put (Node{..}) = do
+  put Node{..} = do
     put nodeId
     put location
   get = do

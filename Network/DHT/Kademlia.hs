@@ -2,7 +2,11 @@
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+#ifdef TEST
+module Network.DHT.Kademlia (receiveRPC) where
+#else
 module Network.DHT.Kademlia (runKademlia) where
+#endif
 
 import           Control.Concurrent
 import           Control.Concurrent.STM
@@ -45,7 +49,7 @@ runKademlia config@Config{..} = do
   dataStore <- defaultDataStore -- TODO use cfgDSType
   mvStoreHT <- H.new >>= newMVar
   pingREQs <- atomically $ newTVar V.empty
-  rt <- readRoutingTable $ T.unpack cfgRoutingTablePath
+  routingTable <- readRoutingTable $ T.unpack cfgRoutingTablePath
 
 #ifdef DEBUG
   logDebugSet <- newStdoutLoggerSet defaultBufSize
@@ -78,7 +82,7 @@ runKademlia config@Config{..} = do
   -- WORKERS
   interactive env
   pingREQReaper env
-  persistRoutingTable env
+  persistRoutingTable env config
 
   -- BIND
   logDebug $ "privateSockAddr " ++ show privateSockAddr
@@ -132,7 +136,7 @@ receiveRPC KademliaEnv{..} send (RPC_PING_RES thatNode) = do
       writeTVar pingREQs pings
     return foundNode
   if foundNode then
-    void $ addNode thisNode rt thatNode
+    void $ addNode thisNode routingTable thatNode
   else
     logWarn ("got a PING_REP from an unknown node" :: BC.ByteString)
   
@@ -168,7 +172,8 @@ receiveRPC KademliaEnv{..} send rpc = do
   logError $ "unimplemented: " ++ show rpc
   return ()
 
--- | Store some data on another node by splitting up the data into chunks
+
+-- | Store some data on another node
 rpcStore :: KademliaEnv
          -> Node -- ^ destination node
          -> B.ByteString -- ^ key

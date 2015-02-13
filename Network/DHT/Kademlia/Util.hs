@@ -1,5 +1,11 @@
 {-# LANGUAGE RecordWildCards #-}
-module Network.DHT.Kademlia.Util where
+module Network.DHT.Kademlia.Util (
+  dumpRT
+, secToMicro
+, storeChunks
+, tryReassemble
+, forkIO_  
+) where
 
 import           Control.Concurrent
 import           Control.Concurrent.STM

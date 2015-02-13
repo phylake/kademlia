@@ -24,10 +24,10 @@ import qualified Data.HashTable.IO as H
 import qualified Data.Text as T
 import qualified Data.Vector as V
 
-persistRoutingTable :: KademliaEnv -> IO ()
-persistRoutingTable (KademliaEnv{..}) = forkIO_ $ forever $ do
+persistRoutingTable :: KademliaEnv -> Config -> IO ()
+persistRoutingTable KademliaEnv{..} config = forkIO_ $ forever $ do
   threadDelay $ secToMicro 10
-  writeRoutingTable fp rt
+  writeRoutingTable fp routingTable
   where
     fp :: FilePath
     fp = T.unpack $ cfgRoutingTablePath config

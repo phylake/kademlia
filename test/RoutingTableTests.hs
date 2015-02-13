@@ -1,10 +1,10 @@
-module RoutingTableTests (routingTable) where
+module RoutingTableTests (routingTableSpec) where
 
 import           TestPrelude
 import qualified Data.Vector as V
 
-routingTable :: Spec
-routingTable = describe "routing table" $ do
+routingTableSpec :: Spec
+routingTableSpec = describe "routing table" $ do
   describe "empty bucket behavior" $ do
     it "adds the first node to the only k-bucket" $
       addFirstNode `shouldReturn` True

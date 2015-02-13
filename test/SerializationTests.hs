@@ -1,6 +1,6 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE OverloadedStrings #-}
-module SerializationTests (serialization) where
+module SerializationTests (serializationSpec) where
 
 import           Control.Concurrent.STM
 import           Data.Aeson as JSON
@@ -12,8 +12,8 @@ import           Test.Hspec
 import qualified Data.ByteString as B
 import qualified Data.Vector as V
 
-serialization :: Spec
-serialization = do
+serializationSpec :: Spec
+serializationSpec = do
   routingTableSerialization
   rpcSerialization
 

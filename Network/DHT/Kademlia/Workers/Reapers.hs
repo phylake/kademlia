@@ -1,44 +1,40 @@
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE CPP #-}
 {-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE ScopedTypeVariables #-}
+#ifdef TEST
+module Network.DHT.Kademlia.Workers.Reapers (pingREQReaper, pingREQReaperImpl) where
+#else
 module Network.DHT.Kademlia.Workers.Reapers (pingREQReaper) where
+#endif
 
 import           Control.Concurrent
 import           Control.Concurrent.STM
-import           Control.Concurrent.Timer
 import           Control.Monad
-import           Data.Binary
-import           Data.Conduit
-import           Data.Conduit.Network
 import           Data.Time.Clock
-import           Data.Vector ((!), (//))
 import           Network.DHT.Kademlia.Bucket
 import           Network.DHT.Kademlia.Def
 import           Network.DHT.Kademlia.Util
-import qualified Data.ByteString as B
-import qualified Data.ByteString.Char8 as BC
-import qualified Data.ByteString.Lazy as BL
-import qualified Data.Conduit.Binary as CB
-import qualified Data.Conduit.List as CL
-import qualified Data.HashTable.IO as H
-import qualified Data.Text as T
 import qualified Data.Vector as V
 
--- | Outstanding PING requests that timeout need to update k-buckets accordingly
+-- | Outstanding outbound PING requests need to be cleaned up.
+-- Partition the vector into expired and unexpired ping requests.
+-- Discard the expired requests and update k buckets accordingly.
 pingREQReaper :: KademliaEnv -> IO ()
-pingREQReaper KademliaEnv{..} = forkIO_ $ forever $ do
+pingREQReaper env = forkIO_ $ forever $ do
   threadDelay $ secToMicro 2 -- should be >= threshold
   now <- getCurrentTime
-  atomically $ do
-    pings <- readTVar pingREQs
-    
-    let (expired, rest) = V.partition (\(t,_) -> diffUTCTime now t > threshold) pings
-    V.mapM (fBucket $ V.map snd expired) rt
-    
-    writeTVar pingREQs rest
+  pingREQReaperImpl env now threshold
   where
     threshold = 1 -- should be <= threadDelay
-    
+
+pingREQReaperImpl :: KademliaEnv -> UTCTime -> NominalDiffTime -> IO ()
+pingREQReaperImpl KademliaEnv{..} now threshold = atomically $ do
+  pings <- readTVar pingREQs
+  
+  let (expired, rest) = V.partition (\(t,_) -> diffUTCTime now t > threshold) pings
+  V.mapM (fBucket $ V.map snd expired) routingTable
+  
+  writeTVar pingREQs rest
+  where
     fBucket :: V.Vector Node -> TVar KBucket -> STM ()
     fBucket expired tv = do
       kb@KBucket{..} <- readTVar tv
