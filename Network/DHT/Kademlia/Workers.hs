@@ -1,3 +1,4 @@
+-- | Periodic background activities that Kademlia must perform
 module Network.DHT.Kademlia.Workers (
   module Network.DHT.Kademlia.Workers.Interactive
 , module Network.DHT.Kademlia.Workers.Persistence

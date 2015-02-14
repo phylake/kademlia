@@ -1,3 +1,4 @@
+{-# OPTIONS_HADDOCK hide #-}
 {-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -24,6 +25,7 @@ import qualified Data.HashTable.IO as H
 import qualified Data.Text as T
 import qualified Data.Vector as V
 
+-- | Periodically persist the routing table incase this node goes offline
 persistRoutingTable :: KademliaEnv -> Config -> IO ()
 persistRoutingTable KademliaEnv{..} config = forkIO_ $ forever $ do
   threadDelay $ secToMicro 10

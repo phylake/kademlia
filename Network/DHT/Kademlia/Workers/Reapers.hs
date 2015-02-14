@@ -1,3 +1,4 @@
+{-# OPTIONS_HADDOCK hide #-}
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE RecordWildCards #-}
 #ifdef TEST
@@ -16,8 +17,10 @@ import           Network.DHT.Kademlia.Util
 import qualified Data.Vector as V
 
 -- | Outstanding outbound PING requests need to be cleaned up.
+-- 
 -- Partition the vector into expired and unexpired ping requests.
--- Discard the expired requests and update k buckets accordingly.
+-- 
+-- Discard the expired requests and update k-buckets accordingly.
 pingREQReaper :: KademliaEnv -> IO ()
 pingREQReaper env = forkIO_ $ forever $ do
   threadDelay $ secToMicro 2 -- should be >= threshold

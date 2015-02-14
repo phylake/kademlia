@@ -1,3 +1,4 @@
+-- | Data and instance definitions
 {-# LANGUAGE CPP #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE OverloadedStrings #-}
@@ -5,22 +6,20 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 module Network.DHT.Kademlia.Def (
-  systemK
-, systemBits
-, systemBytes
-, recvBytes
-, chunkBytes
-
-, DataStoreType(..)
-, Config(..)
-
-, KademliaEnv(..)
+-- * Data definitions
+  KademliaEnv(..)
 
 , DataStore(..)
 , defaultDataStore
 
+-- ** Nodes
 , NodeId
 , Key
+, Node(..)
+
+-- ** k-buckets
+, KBucket(..)
+, defaultKBucket
 
 #ifdef TEST
 , LastSeen(..)
@@ -29,22 +28,25 @@ module Network.DHT.Kademlia.Def (
 #endif
 , lastSeen
 
-, Node(..)
-
-, KBucket(..)
-, defaultKBucket
-
+-- ** Routing table
 , RoutingTable
 , defaultRoutingTable
 , writeRoutingTable
 , readRoutingTable
 
-, RPC(RPC_PING_REQ,
-      RPC_PING_RES,
-      RPC_STORE_REQ,
-      RPC_FIND_NODE,
-      RPC_FOUND_NODE,
-      RPC_FIND_VALUE)
+-- ** Remote procedure calls
+, RPC(..)
+
+-- * Constants
+, systemK
+, systemBits
+, systemBytes
+, recvBytes
+, chunkBytes
+
+-- * Configuration
+, Config(..)
+, DataStoreType(..)
 ) where
 --module Network.DHT.Kademlia.Def where
 
@@ -78,6 +80,7 @@ each bucket is length k
 1 bucket per bit
 -}
 
+-- | A system-wide constant for k-bucket length of 20
 systemK :: Int
 #ifdef TEST
 systemK = 2
@@ -85,6 +88,7 @@ systemK = 2
 systemK = 20
 #endif
 
+-- | A system-wide constant of 160
 systemBits :: Double
 #ifdef TEST
 systemBits = 3
@@ -95,25 +99,24 @@ systemBits = 160
 systemBytes :: Int
 systemBytes = fromIntegral $ systemBits/8
 
--- | IPv4 minimum reassembly buffer size = 576 bytes
--- minus IP header = 20 bytes
--- minus UDP header = 8 bytes
--- == 548 bytes
+-- | 548 bytes
+-- 
+-- > IPb = IPv4 minimum reassembly buffer size = 576 bytes
+-- > IPh = IP header = 20 bytes
+-- > UDPh = UDP header = 8 bytes
+-- > IPb - IPh - UDPh == 548 bytes
 recvBytes :: Int
 recvBytes = 548
 
--- | The size in bytes of a Kademlia chunk of data
+-- | The size in bytes of a chunk of data to be sent across the wire.
 -- 
--- >   recvBytes
--- > - rpc header
--- > - key length
--- > - sequence number
--- > - total chunks
+-- >recvBytes - rpc header - key length - sequence number - total chunks
 chunkBytes :: Int
 chunkBytes = recvBytes - 1 - systemBytes - 4 - 4 - 2
 
-data DataStoreType = Hedis
-                   | HashTables
+-- | Configurable data stores. See 'Config'
+data DataStoreType = Hedis -- ^ Redis
+                   | HashTables -- ^ In-memory
 
 instance FromJSON DataStoreType where
   parseJSON (Object v) = do
@@ -125,11 +128,11 @@ instance FromJSON DataStoreType where
   parseJSON _ = mzero
 
 data Config = Config {
-                       cfgThisNode :: Node
-                     , cfgSeedNode :: Node
-                     , cfgRoutingTablePath :: Text
-                     , cfgLogDir :: String
-                     , cfgDSType :: DataStoreType
+                       cfgThisNode :: Node -- ^ Each node must be given an identity
+                     , cfgSeedNode :: Node -- ^ And be seeded with a known node in the network with which to connect
+                     , cfgRoutingTablePath :: Text -- ^ The routing table should be persisted in case of node failure
+                     , cfgLogDir :: String -- ^ (Optional) Path to log. Default is @\/var\/log\/kademlia@
+                     , cfgDSType :: DataStoreType -- (Optional) Defaults to Hedis
                      }
 
 instance FromJSON Config where
@@ -147,6 +150,7 @@ type StoreHT = H.BasicHashTable B.ByteString (TVar (V.Vector B.ByteString))
 data KademliaEnv = KademliaEnv {
                                  dataStore :: DataStore
                                , routingTable :: RoutingTable
+                               -- | Transient store for incoming chunks of data for a 'Key'
                                , mvStoreHT :: MVar StoreHT
                                , thisNode :: Node -- ^ this node's address
                                , pingREQs :: TVar (V.Vector (UTCTime, Node)) -- ^ outstanding ping requests originating from this node
@@ -158,15 +162,20 @@ data KademliaEnv = KademliaEnv {
                                , sock :: Socket
                                }
 
--- | This is not thread safe you must add thread safety yourself
+-- | Flexible key-value storage.
+-- 
+-- No locking is done on this structure. You must add thread safety yourself.
 data DataStore = DataStore {
-                             dsGet :: B.ByteString -- ^ key
-                                   -> IO (Maybe B.ByteString) -- ^ maybe value
-                           , dsSet :: B.ByteString -- ^ key
-                                   -> B.ByteString -- ^ value
+                           -- | Retreive a value by key
+                             dsGet :: B.ByteString
+                                   -> IO (Maybe B.ByteString)
+                           -- | Store a key-value pair
+                           , dsSet :: B.ByteString
+                                   -> B.ByteString
                                    -> IO ()
                            }
 
+-- | Threadsafe 'HashTables'
 defaultDataStore :: IO DataStore
 defaultDataStore = do
   (ht :: H.BasicHashTable B.ByteString B.ByteString) <- H.new
@@ -176,22 +185,23 @@ defaultDataStore = do
   , dsGet = (\k -> withMVar mv $ \ht -> H.lookup ht k)
   }
 
--- | Node ids and keys are synonymous
+-- | Node ids and keys are both 'systemBits' bit numbers
 type NodeId = Key
 
--- | A key is an integer containing `systemBits` bits
 type Key = Double
 
--- | Constructor not exposed so there can be no mistakes in units
+-- | Constructor not exposed so there can be no mistakes in units. Use 'lastSeen'
 newtype LastSeen = LastSeen { unLast :: Double }
                    deriving (Show, Eq, Generic)
 
 instance ToJSON LastSeen where
 instance FromJSON LastSeen where
 
+-- | The only way to construct a 'LastSeen'
 lastSeen :: IO LastSeen
 lastSeen = liftM LastSeen epochNow
 
+-- | A Kademlia node
 data Node = Node {
                    nodeId :: NodeId
                  , location :: SockAddr
@@ -240,9 +250,9 @@ instance FromJSON SockAddr where
     v .: "host"
   parseJSON _ = mzero
 
--- | range is [kMinRange, kMaxRange) == kMinRange ≤ range < kMaxRange
+-- | A k-bucket is a list of length 'systemK'
 -- 
--- tail is most recently seen, head is least recently seen
+-- The tail is the most recently seen 'Node', head is least recently seen.
 -- 
 -- "k-buckets effectively implement a least-recently seen eviction policy,
 --  except that live nodes are never removed from the list"
@@ -251,22 +261,24 @@ data KBucket = KBucket {
                        }
                        deriving (Show, Eq, Generic)
 
+-- | Convenience ctor as the 'KBucket' definition changes
 defaultKBucket = KBucket {kContent = V.empty}
 
 instance ToJSON KBucket where
 instance FromJSON KBucket where
 
--- | Length of `systemBits`
+-- | Length of 'systemBits'
 type RoutingTable = V.Vector (TVar KBucket)
 
--- | Preallocated vector of length systemBits where
--- indices 1 through systemBits - 1 are empty buckets
+-- | Preallocated vector of length 'systemBits' where
+-- indices 1 through 'systemBits' - 1 are empty buckets
 -- and the bucket at index 0 contains the entire bit range
 defaultRoutingTable :: Maybe Int -> STM RoutingTable
 defaultRoutingTable mLen = V.replicateM systemBits' (newTVar defaultKBucket)
   where
     systemBits' = maybe (fromIntegral systemBits) id mLen
 
+-- | Write to disk at 'cfgRoutingTablePath' the internal routing table as a JSON
 writeRoutingTable :: FilePath -> RoutingTable -> IO ()
 writeRoutingTable fp rt = atomically (V.mapM readTVar rt) >>=
   return . JSON.encode . V.takeWhile (/= defaultKBucket) >>=
@@ -288,7 +300,7 @@ readRoutingTable fp = do
         buckets' <- V.mapM newTVar $ V.fromList buckets
         return $ V.concat [buckets', remainder]
 
-
+-- | TODO implement lifecycle hooks
 data RPCHooks = RPCHooks {
                            foundNode :: Node -> IO ()
                          , ping :: Node -> IO ()
@@ -296,14 +308,16 @@ data RPCHooks = RPCHooks {
 
 --data RPCEnvelope = RPCEnvelope NodeId RPC
 
+-- | All remote procedure calls sent between 'Node's in a Kademlia network
 data RPC = RPC_UNKNOWN
          | RPC_PING_REQ Node
          | RPC_PING_RES Node
-         | RPC_STORE_REQ B.ByteString -- ^ key
-                         Word32 -- ^ chunk sequence number
-                         Word32 -- ^ chunk total
-                         Word16 -- ^ chunk length
-                         B.ByteString -- ^ chunk of data
+         -- | key, chunk sequence number, chunk total, chunk length, chunk of data
+         | RPC_STORE_REQ B.ByteString -- key
+                         Word32 -- chunk sequence number
+                         Word32 -- chunk total
+                         Word16 -- chunk length
+                         B.ByteString -- chunk of data
          | RPC_FIND_NODE Node
          | RPC_FOUND_NODE Node
          | RPC_FIND_VALUE
