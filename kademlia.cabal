@@ -78,7 +78,7 @@ test-suite all
     cpp-options:       -DTEST
     hs-source-dirs:    test, .
     main-is:           main.hs
-    build-depends:     hspec ==1.*
+    build-depends:     hspec ==2.*
                      , base >=4.6
                      , aeson ==0.*
                      , binary ==0.*
