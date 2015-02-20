@@ -3,7 +3,7 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 #ifdef TEST
-module Network.DHT.Kademlia (receiveRPC) where
+module Network.DHT.Kademlia (receiveRPC, rpcStore) where
 #else
 module Network.DHT.Kademlia (runKademlia) where
 #endif
@@ -30,6 +30,11 @@ import qualified Data.Text as T
 import qualified Data.Vector as V
 import qualified Network.Socket.ByteString as NB
 
+-- | Kademlia as a library starts here.
+-- 
+-- If you've installed kademlia type @kademlia@ to get help running it.
+-- 
+-- Also refer to the <https://github.com/phylake/kademlia getting started documentation>
 runKademlia :: Config -> IO ()
 runKademlia config@Config{..} = do
   -- init networking
@@ -175,10 +180,10 @@ receiveRPC KademliaEnv{..} send rpc = do
 
 -- | Store some data on another node
 rpcStore :: KademliaEnv
-         -> Node -- ^ destination node
+         -> (RPC -> IO ()) -- ^ send outbound RPCs
          -> B.ByteString -- ^ key
          -> IO ()
-rpcStore KademliaEnv{..} Node{..} key = do
+rpcStore KademliaEnv{..} send key = do
   mVal <- (dsGet dataStore) key
   case mVal of
     Nothing -> return ()
@@ -188,8 +193,6 @@ rpcStore KademliaEnv{..} Node{..} key = do
       mapM_ send chunks
       send chunk
       send $ RPC_PING_REQ thisNode
-  where
-    send = flip (NB.sendAllTo sock) location . BL.toStrict . encode
 
 -- | Bottom of 2.3
 -- "To join a network, a node u must have a contact to an already participating

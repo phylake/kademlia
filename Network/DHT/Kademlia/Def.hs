@@ -112,7 +112,11 @@ recvBytes = 548
 -- 
 -- >recvBytes - rpc header - key length - sequence number - total chunks
 chunkBytes :: Int
+#ifdef TEST
 chunkBytes = recvBytes - 1 - systemBytes - 4 - 4 - 2
+#else
+chunkBytes = 2
+#endif
 
 -- | Configurable data stores. See 'Config'
 data DataStoreType = Hedis -- ^ Redis
