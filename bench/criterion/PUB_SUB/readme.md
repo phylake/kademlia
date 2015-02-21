@@ -1,23 +1,18 @@
 Results
 =======
 
-    warming up
-    estimating clock resolution...
-    mean is 1.630692 us (320001 iterations)
-    found 794 outliers among 319999 samples (0.2%)
-      339 (0.1%) high severe
-    estimating cost of a clock call...
-    mean is 50.48470 ns (12 iterations)
-    found 1 outliers among 12 samples (8.3%)
-      1 (8.3%) high severe
+[HTML]()
 
-    benchmarking zmq PUB-SUB/only
-    mean: 304.1391 ns, lb 300.7478 ns, ub 311.2938 ns, ci 0.950
-    std dev: 24.10250 ns, lb 11.66218 ns, ub 41.04288 ns, ci 0.950
-    found 6 outliers among 100 samples (6.0%)
-      5 (5.0%) high severe
-    variance introduced by outliers: 70.710%
-    variance is severely inflated by outliers
+Raw
+
+```
+benchmarking zmq PUB-SUB/only
+time                 230.7 ns   (227.7 ns .. 234.6 ns)
+                     0.998 R²   (0.998 R² .. 0.999 R²)
+mean                 237.1 ns   (234.8 ns .. 239.3 ns)
+std dev              7.711 ns   (6.155 ns .. 9.677 ns)
+variance introduced by outliers: 48% (moderately inflated)
+```
 
 Reproducing these results
 =========================
@@ -30,10 +25,10 @@ if your ghc is smart enough to find libzmq.so
     ghc -O2 -threaded -rtsopts -lzmq -L. -optl-Wl,-rpath,'$ORIGIN' ZMQClient
 
     # start client benchmark
-    ./ZMQClient -o ZMQClient.html +RTS -N -A500M
+    ./ZMQClient -o ZMQClient.html +RTS -N1 -A20M
 
     # build server
     ghc -O2 -threaded -rtsopts -lzmq -L. -optl-Wl,-rpath,'$ORIGIN' ZMQServer
     
     # start server
-    ./ZMQServer +RTS -N -A500M
+    ./ZMQServer +RTS -N1 -A20M

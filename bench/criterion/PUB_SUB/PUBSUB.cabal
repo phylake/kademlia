@@ -1,0 +1,24 @@
+name:                Kademlia-ZMQ-PUBSUB-Bench
+version:             0.1.0.0
+-- synopsis:            
+-- description:         
+license:             BSD3
+license-file:        LICENSE
+author:              Brandon Cook
+maintainer:          phylake@gmail.com
+-- copyright:           
+category:            Network
+build-type:          Simple
+extra-source-files:  readme.md
+cabal-version:       >=1.10
+
+executable Kademlia-ZMQ-PUBSUB-Bench
+  main-is:             ZMQServer.hs
+  -- other-modules:       
+  other-extensions:    OverloadedStrings
+  build-depends:       base >=4.7 && <4.8
+                     , criterion >=1.0 && <1.1
+                     , zeromq4-haskell >=0.6 && <0.7
+                     , bytestring >=0.10 && <0.11
+  -- hs-source-dirs:      
+  default-language:    Haskell2010

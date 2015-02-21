@@ -9,7 +9,7 @@ import           System.ZMQ4
 main = do
   ctx <- context
   caps <- getNumCapabilities
-  setIoThreads (fromIntegral caps) ctx
+  setIoThreads 1 ctx
   
   sock <- socket ctx Pub
   bind sock "tcp://127.0.0.1:3000"
@@ -21,12 +21,13 @@ main = do
   close sockREP
 
   let io = do {
-    send sock [] "data";
+    send sock [] "datagram";
   }
   
   defaultMain [ bgroup "zmq PUB-SUB" [
                   bench "only" $ whnfIO io
                 ]
               ]
+  send sock [] "exit"
   close sock
   shutdown ctx

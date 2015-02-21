@@ -5,10 +5,10 @@ import           Control.Monad
 import           GHC.Conc.Sync
 import           System.ZMQ4
 import qualified Data.ByteString.Char8 as BC
-
-sub = do
+  
+main = do
   ctx <- context
-  setIoThreads 16 ctx
+  setIoThreads 1 ctx
   
   sockSUB <- socket ctx Sub
   connect sockSUB "tcp://127.0.0.1:3000"
@@ -16,16 +16,18 @@ sub = do
 
   sockREQ <- socket ctx Req
   connect sockREQ "tcp://127.0.0.1:3001"
-  send sockREQ [] "I'M ALIVE!!!"
+  send sockREQ [] ""
   receive sockREQ
   close sockREQ
 
-  forever $ do
-    bs <- receive sockSUB
-    putStrLn $ BC.unpack bs
+  loop ctx sockSUB
 
   shutdown ctx
 
-main = do
-  getNumCapabilities >>= putStrLn . ("num capabilities: "++) . show
-  sub
+loop ctx sockSUB = do
+  bs <- receive sockSUB
+  case bs of
+    "exit" -> do
+      shutdown ctx
+      return ()
+    otherwise -> loop ctx sockSUB
