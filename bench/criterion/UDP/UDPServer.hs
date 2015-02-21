@@ -21,6 +21,10 @@ main = do
   sock <- socket AF_INET Datagram defaultProtocol
   bind sock $ SockAddrInet (PortNum $ read port) addr
   putStrLn $ "UDP server listening on " ++ port
-  forever $ do
-    (bs, sockAddr) <- NB.recvFrom sock recvBytes
-    putStrLn $ "received [" ++ (BC.unpack bs) ++ "] from " ++ show sockAddr
+  loop sock
+  
+loop sock = do
+    (bs, _) <- NB.recvFrom sock recvBytes
+    case bs of
+      "exit" -> return ()
+      otherwise -> loop sock

@@ -28,3 +28,5 @@ main = do
                 , bench "sendto" $ whnfIO sendto
                 ]
               ]
+  NB.sendTo sendtoSock "exit" sendtoSockAddr
+  NB.send connectSock "exit"
