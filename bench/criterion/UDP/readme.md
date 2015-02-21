@@ -1,6 +1,10 @@
 Results
 =======
 
+[HTML](http://htmlpreview.github.io/?https://github.com/phylake/kademlia/master/bench/criterion/UDP/UDPClient.html)
+
+Raw
+
     benchmarking udp/connect and send
     time                 3.125 μs   (3.116 μs .. 3.140 μs)
                          1.000 R²   (1.000 R² .. 1.000 R²)
