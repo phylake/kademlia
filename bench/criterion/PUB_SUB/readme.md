@@ -1,7 +1,7 @@
 Results
 =======
 
-[HTML]()
+[HTML](http://htmlpreview.github.io/?https://github.com/phylake/kademlia/master/bench/criterion/PUB_SUB/ZMQClient.html)
 
 Raw
 
