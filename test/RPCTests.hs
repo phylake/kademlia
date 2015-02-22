@@ -3,24 +3,33 @@ module RPCTests (rpcSpec) where
 
 import           Control.Concurrent
 import           Control.Concurrent.STM
-import           Control.Monad
+import           Data.Time.Clock
 import           Network.DHT.Kademlia
-import           Network.DHT.Kademlia.Util
-import           Network.Socket hiding (send)
+import           Network.DHT.Kademlia.Util (forkIO_)
+import           Network.DHT.Kademlia.Workers.Reapers
+import           Network.Socket (SockAddr(SockAddrInet))
 import           System.Timeout
 import           TestPrelude
-import qualified Data.HashTable.IO as H
 import qualified Data.ByteString as B
-import qualified Data.Text as T
 import qualified Data.Vector as V
+
+thisNode :: Node
+thisNode = Node 0 (SockAddrInet 3030 2130706433)
+
+thatNode :: Node
+thatNode = Node 1 (SockAddrInet 4040 2130706433)
 
 rpcSpec :: Spec
 rpcSpec = describe "RPCs" $ do
   describe "RPC_PING" $ do
-    it "ping pongs" $ do
+    it "receives pong" $ do
       pingPong `shouldReturn` Just True
+    it "is tracked in pingREQs" $ do
+      pingsAreTracked `shouldReturn` True
+    it "and RPC_PING_REQS are cleaned up periodically" $ do
+      pingsAreRemoved `shouldReturn` True
   describe "RPC_STORE" $ do
-    it "assembles chunked data" $ do
+    it "transmits and reassembles chunked data" $ do
       storeChunkedData `shouldReturn` True
 
 pingPong :: IO (Maybe Bool)
@@ -35,13 +44,32 @@ pingPong = do
   forkIO_ $ receiveRPC env send (RPC_PING_REQ thatNode)
   timeout 1000 $ readMVar mv
 
+pingsAreTracked :: IO Bool
+pingsAreTracked = do
+  env <- newEnv
+  receiveRPC env sendNoop (RPC_PING_REQ thatNode)
+  pings <- atomically $ readTVar $ pingREQs env
+  return (snd (V.head pings) ~= thatNode)
+
+pingsAreRemoved :: IO Bool
+pingsAreRemoved = do
+  now <- getCurrentTime
+  env <- newEnv
+  receiveRPC env sendNoop (RPC_PING_REQ thatNode)
+  -- go 2 seconds in the future with a threshold of 1 seconds
+  pingREQReaperImpl env (addUTCTime 2 now) 1
+  pings <- atomically $ readTVar $ pingREQs env
+  return $ V.length pings == 0
+
 -- | Have node A store data on node B
 storeChunkedData :: IO Bool
 storeChunkedData = do
   -- create node B
   envB <- newEnv
-  let sendFromB = const (return ()) -- ignore input. node B isn't sending anything
-  let sendToB = receiveRPC envB sendFromB -- node A's ability to send to node B
+
+  -- node A's ability to send to node B.
+  -- whatever it sends will be a noop
+  let sendToB = receiveRPC envB sendNoop
   
   -- create node A and give it the key-value pair
   envA <- newEnv
@@ -59,22 +87,3 @@ storeChunkedData = do
     key = B.singleton 1
     value = B.pack [1, 2, 3, 4]
 
-newEnv :: IO KademliaEnv
-newEnv = do
-  sock <- socket AF_INET Datagram defaultProtocol
-  mvStoreHT <- H.new >>= newMVar
-  dataStore <- defaultDataStore
-  pingREQs <- atomically $ newTVar V.empty
-  routingTable <- atomically $ defaultRoutingTable Nothing
-  return KademliaEnv{..}
-  where
-    logDebug _ = return ()
-    logInfo _ = return ()
-    logWarn _ = return ()
-    logError _ = return ()
-
-thisNode :: Node
-thisNode = Node 0 (SockAddrInet 3030 2130706433)
-
-thatNode :: Node
-thatNode = Node 1 (SockAddrInet 4040 2130706433)

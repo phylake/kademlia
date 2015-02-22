@@ -29,20 +29,22 @@ routingTableSpec = describe "routing table" $ do
     it "[2,4,5,3,1]     yields [[1], [2,3], [4,5]]" $
       addNodeSimple 0 [2,4,5,3,1] `shouldReturn` [[1], [2,3], [4,5]]
   
-  describe "node 7 adding" $ do
-    it "[0,1,2,3,4,5,6] yields [[6],[4,5],[0,1]]" $
-      addNodeSimple 7 [0,1,2,3,4,5,6] `shouldReturn` [[6],[4,5],[0,1]]
+  describe "node 7" $ do
+    it "adding [0,1,2,3,4,5,6] yields [[6],[4,5],[0,1]]" $
+      addNodeSimple 7 [0..6] `shouldReturn` [[6],[4,5],[0,1]]
+    it "and its k closest nodes are [6,5]" $
+      getKClosestNodes `shouldReturn` [6,5]
 
-newNode :: Node
-newNode = defaultNode {nodeId = 7} -- fullBucket range is 0-7
+node1 :: Node
+node1 = defaultNode {nodeId = 1}
 
-thisNode :: Node
-thisNode = defaultNode {nodeId = 1}
+node7 :: Node
+node7 = defaultNode {nodeId = 7} -- fullBucket range is 0-7
 
 addFirstNode :: IO Bool
 addFirstNode = do
   rt <- atomically $ defaultRoutingTable Nothing
-  e <- addNode thisNode rt newNode
+  e <- addNode node1 rt node7
   case e of
     Left _ -> return False
     Right _ -> do
@@ -50,5 +52,12 @@ addFirstNode = do
       return $ newKBucketWithNode ~= (rt' ! 2)
   where
     newKBucketWithNode = KBucket {
-      kContent = V.fromList [(newNode, LastSeen 0)]
+      kContent = V.fromList [(node7, LastSeen 0)]
     }
+
+getKClosestNodes :: IO [NodeId]
+getKClosestNodes = do
+  rt <- atomically $ defaultRoutingTable Nothing
+  forM_ [0..6] $ \i -> addNode node7 rt defaultNode {nodeId = i}
+  closest <- kClosestNodes rt
+  return $ V.toList $ V.map nodeId closest

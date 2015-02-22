@@ -1,3 +1,4 @@
+{-# LANGUAGE RecordWildCards #-}
 module TestPrelude (
   module Control.Concurrent.STM
 , module Control.Monad
@@ -9,20 +10,24 @@ module TestPrelude (
 
 , addNodeSimple
 , stripSTM
+, newEnv
+, sendNoop
 , defaultNode
 , fullKBucket
 , leftKBucket
 , rightKBucket
 ) where
 
+import           Control.Concurrent
 import           Control.Concurrent.STM
 import           Control.Monad
 import           Data.Vector ((!), (//))
 import           Network.DHT.Kademlia.Bucket
 import           Network.DHT.Kademlia.Def hiding (thisNode)
-import           Network.Socket (SockAddr(SockAddrUnix))
+import           Network.Socket hiding (send)
 import           Test.Hspec
 import           TestEq
+import qualified Data.HashTable.IO as H
 import qualified Data.Vector as V
 
 -- | Node ids in, node ids out
@@ -37,6 +42,23 @@ addNodeSimple thisId otherIds = do
 
 stripSTM :: RoutingTable -> IO (V.Vector KBucket)
 stripSTM = V.mapM (atomically . readTVar)
+
+newEnv :: IO KademliaEnv
+newEnv = do
+  sock <- socket AF_INET Datagram defaultProtocol
+  mvStoreHT <- H.new >>= newMVar
+  dataStore <- defaultDataStore
+  pingREQs <- atomically $ newTVar V.empty
+  routingTable <- atomically $ defaultRoutingTable Nothing
+  return KademliaEnv{..}
+  where
+    logDebug _ = return ()
+    logInfo _ = return ()
+    logWarn _ = return ()
+    logError _ = return ()
+
+sendNoop :: RPC -> IO ()
+sendNoop _ = return ()
 
 defaultNode = Node 0 $ SockAddrUnix ""
 

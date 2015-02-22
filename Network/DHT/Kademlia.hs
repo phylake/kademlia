@@ -95,8 +95,10 @@ runKademlia config@Config{..} = do
   logInfo $ "Kademlia bound to " ++ show cfgPort
   caps <- getNumCapabilities
   logInfo $ "num capabilities [" ++ show caps ++ "]"
+  
   -- JOIN network
-  joinNetwork env cfgSeedNode
+  let send = flip (NB.sendAllTo sock) (location cfgSeedNode) . BL.toStrict . encode
+  joinNetwork env send cfgSeedNode
 
   -- MAIN LOOP
   loop env
@@ -173,6 +175,10 @@ receiveRPC KademliaEnv{..} send (RPC_STORE_REQ k n m _ bs) = do
       (dsSet dataStore) k value
   return ()
 
+receiveRPC KademliaEnv{..} send (RPC_FIND_NODE_REQ node nodeId) = do
+  addNode thisNode routingTable node >>= either logError (\_ -> return ())
+  return ()
+
 receiveRPC KademliaEnv{..} send rpc = do
   logError $ "unimplemented: " ++ show rpc
   return ()
@@ -194,14 +200,24 @@ rpcStore KademliaEnv{..} send key = do
       send chunk
       send $ RPC_PING_REQ thisNode
 
+rpcFindNode :: KademliaEnv
+         -> (RPC -> IO ()) -- ^ send outbound RPCs
+         -> NodeId
+         -> IO ()
+rpcFindNode KademliaEnv{..} send nodeId = do
+  replicateM systemα $ send $ RPC_FIND_NODE_REQ thisNode nodeId
+  return ()
+
 -- | Bottom of 2.3
+-- 
 -- "To join a network, a node u must have a contact to an already participating
 --  node w. u inserts w into the appropriate k-bucket. u then performs a node
 --  lookup for its own node ID. Finally, u refreshes all k-buckets further away
 --  than its closest neighbor. During the refreshes, u both populates its own
 --  k-buckets and inserts itself into other nodes' k-buckets as necessary"
-joinNetwork :: KademliaEnv -> Node -> IO ()
-joinNetwork KademliaEnv{..} seed@Node{..} = send $ RPC_PING_REQ seed
-  where
-    send = flip (NB.sendAllTo sock) location . BL.toStrict . encode
-
+joinNetwork :: KademliaEnv
+            -> (RPC -> IO ()) -- ^ send outbound RPCs
+            -> Node
+            -> IO ()
+joinNetwork KademliaEnv{..} send seed@Node{..} = do
+  send $ RPC_PING_REQ seed

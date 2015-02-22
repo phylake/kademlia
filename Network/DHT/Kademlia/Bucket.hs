@@ -1,5 +1,8 @@
 {-# LANGUAGE RecordWildCards #-}
-module Network.DHT.Kademlia.Bucket where
+module Network.DHT.Kademlia.Bucket (
+  addNode
+, kClosestNodes
+) where
 
 import           Control.Concurrent.STM
 import           Control.Monad
@@ -39,3 +42,16 @@ addNode this@(Node thisNodeId _) kbuckets that@(Node thatNodeId _)
   where
     kBucketIdx = floor $ logBase 2 $ fromIntegral thisXORThat
     thisXORThat = (toInteger thisNodeId) `xor` (toInteger thatNodeId)
+
+-- | The 'systemK' closest and most recently seen nodes to this node
+kClosestNodes :: RoutingTable -> IO (V.Vector Node)
+kClosestNodes = V.foldM f V.empty
+  where
+    f acc tVar
+      | V.length acc == systemK = return acc
+      | otherwise = atomically $ do
+          kb <- readTVar tVar
+          return $ acc V.++ kBucketTail (systemK - V.length acc) kb
+
+kBucketTail :: Int -> KBucket -> V.Vector Node
+kBucketTail n = V.map fst . V.take n . V.reverse . kContent

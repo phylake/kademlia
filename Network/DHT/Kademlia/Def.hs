@@ -41,6 +41,7 @@ module Network.DHT.Kademlia.Def (
 , systemK
 , systemBits
 , systemBytes
+, systemα
 , recvBytes
 , chunkBytes
 
@@ -98,6 +99,9 @@ systemBits = 160
 
 systemBytes :: Int
 systemBytes = fromIntegral $ systemBits/8
+
+systemα :: Int
+systemα = 3
 
 -- | 548 bytes
 -- 
@@ -170,7 +174,7 @@ data KademliaEnv = KademliaEnv {
 -- 
 -- No locking is done on this structure. You must add thread safety yourself.
 data DataStore = DataStore {
-                           -- | Retreive a value by key
+                           -- | Retrieve a value by key
                              dsGet :: B.ByteString
                                    -> IO (Maybe B.ByteString)
                            -- | Store a key-value pair
@@ -271,6 +275,8 @@ defaultKBucket = KBucket {kContent = V.empty}
 instance ToJSON KBucket where
 instance FromJSON KBucket where
 
+-- TODO document break from bucket split
+
 -- | Length of 'systemBits'
 type RoutingTable = V.Vector (TVar KBucket)
 
@@ -314,7 +320,9 @@ data RPCHooks = RPCHooks {
 
 -- | All remote procedure calls sent between 'Node's in a Kademlia network
 data RPC = RPC_UNKNOWN
+         -- | Payload is this node
          | RPC_PING_REQ Node
+         -- | Payload is the sending node
          | RPC_PING_RES Node
          -- | key, chunk sequence number, chunk total, chunk length, chunk of data
          | RPC_STORE_REQ B.ByteString -- key
@@ -322,8 +330,10 @@ data RPC = RPC_UNKNOWN
                          Word32 -- chunk total
                          Word16 -- chunk length
                          B.ByteString -- chunk of data
-         | RPC_FIND_NODE Node
-         | RPC_FOUND_NODE Node
+         -- | Payload is this node and the node id it's looking for
+         | RPC_FIND_NODE_REQ Node NodeId
+         -- | Payload is the node we were looking for
+         | RPC_FIND_NODE_RES Node
          | RPC_FIND_VALUE
          deriving (Show, Eq)
 
@@ -355,7 +365,10 @@ instance Binary RPC where
     
     mapM putWord8 $ B.unpack bs
     return ()
-  put (RPC_FIND_NODE _) = putWord8 4
+  put (RPC_FIND_NODE_REQ node nodeId) = do
+    putWord8 4
+    put node
+    put nodeId
   put (RPC_FIND_VALUE) = putWord8 5
   
   get = do
