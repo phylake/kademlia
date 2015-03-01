@@ -1,17 +1,26 @@
 {-# LANGUAGE RecordWildCards #-}
 module Network.DHT.Kademlia.Bucket (
-  addNode
+  nodeDist
+, kBucketIndex
+, addNode
 , kClosestNodes
 ) where
 
 import           Control.Concurrent.STM
 import           Control.Monad
 import           Data.Bits
+import           Data.List
 import           Data.Vector ((!), (!?), (//))
 import           Network.DHT.Kademlia.Def
 import           Network.DHT.Kademlia.Util
 import           Util.Time
 import qualified Data.Vector as V
+
+nodeDist :: NodeId -> NodeId -> NodeId
+nodeDist n1 n2 = fromIntegral $ (toInteger n1) `xor` (toInteger n2)
+
+kBucketIndex :: NodeId -> NodeId -> Int
+kBucketIndex n1 n2 = floor $ logBase 2 $ nodeDist n1 n2
 
 addNode :: Node -- ^ this node
         -> RoutingTable
@@ -40,18 +49,27 @@ addNode this@(Node thisNodeId _) kbuckets that@(Node thatNodeId _)
                 return $ Right ()
               else return $ Right () 
   where
-    kBucketIdx = floor $ logBase 2 $ fromIntegral thisXORThat
-    thisXORThat = (toInteger thisNodeId) `xor` (toInteger thatNodeId)
+    kBucketIdx = kBucketIndex thisNodeId thatNodeId
 
 -- | The 'systemK' closest and most recently seen nodes to this node
-kClosestNodes :: RoutingTable -> IO (V.Vector Node)
-kClosestNodes = V.foldM f V.empty
+kClosestNodes :: NodeId -> RoutingTable -> IO (V.Vector Node)
+kClosestNodes thisNodeId = V.foldM foldF V.empty
   where
-    f acc tVar
+    foldF :: V.Vector Node -> TVar KBucket -> IO (V.Vector Node)
+    foldF acc tVar
       | V.length acc == systemK = return acc
       | otherwise = atomically $ do
           kb <- readTVar tVar
-          return $ acc V.++ kBucketTail (systemK - V.length acc) kb
+          return $ acc V.++ nClosestNodes (systemK - V.length acc) kb
 
-kBucketTail :: Int -> KBucket -> V.Vector Node
-kBucketTail n = V.map fst . V.take n . V.reverse . kContent
+    nClosestNodes :: Int -> KBucket -> V.Vector Node
+    nClosestNodes n = V.fromList
+                    . take n
+                    . sortBy sortF
+                    . map fst
+                    . V.toList
+                    . kContent
+
+    sortF :: Node -> Node -> Ordering
+    sortF n1 n2 = compare (nodeDist thisNodeId $ nodeId n1)
+                          (nodeDist thisNodeId $ nodeId n2)
