@@ -14,7 +14,7 @@ reqConnectEachTime = do
     ZM.setIoThreads (fromIntegral caps)
     sock <- ZM.socket ZM.Req
     ZM.connect sock "tcp://127.0.0.1:3000"
-    ZM.send sock [] "data"
+    ZM.send sock [] "datagram"
     ZM.receive sock
 
 getREQ = do
@@ -24,7 +24,7 @@ getREQ = do
   sock <- Z.socket ctx Z.Req
   Z.connect sock "tcp://127.0.0.1:3001"
   let io = do {
-    Z.send sock [] "data";
+    Z.send sock [] "datagram";
     Z.receive sock
   }
   return (ctx, sock, io)

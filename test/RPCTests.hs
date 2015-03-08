@@ -31,6 +31,9 @@ rpcSpec = describe "RPCs" $ do
   describe "RPC_STORE" $ do
     it "transmits and reassembles chunked data" $ do
       storeChunkedData `shouldReturn` True
+  describe "RPC_FIND_NODE" $ do
+    it "finds the k closest nodes to a given id" $ do
+      findNode `shouldReturn` True
 
 pingPong :: IO (Maybe Bool)
 pingPong = do
@@ -87,3 +90,5 @@ storeChunkedData = do
     key = B.singleton 1
     value = B.pack [1, 2, 3, 4]
 
+findNode :: IO Bool
+findNode = return True

@@ -40,9 +40,6 @@ addNodeSimple thisId otherIds = do
   where
     thisNode = defaultNode {nodeId = thisId}
 
-stripSTM :: RoutingTable -> IO (V.Vector KBucket)
-stripSTM = V.mapM (atomically . readTVar)
-
 newEnv :: IO KademliaEnv
 newEnv = do
   sock <- socket AF_INET Datagram defaultProtocol

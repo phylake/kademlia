@@ -4,6 +4,7 @@ module Network.DHT.Kademlia.Bucket (
 , kBucketIndex
 , addNode
 , kClosestNodes
+, stripSTM
 ) where
 
 import           Control.Concurrent.STM
@@ -42,34 +43,33 @@ addNode this@(Node thisNodeId _) kbuckets that@(Node thatNodeId _)
               writeTVar (kbuckets ! kBucketIdx) kb'
               return $ Right ()
             -- we didn't know this node. add it to our kbucket if it has room
-            Nothing -> if V.length kContent < systemK
-              then do
+            Nothing | V.length kContent < systemK -> do
                 let kb' = kb {kContent = V.snoc kContent (that, now)}
                 writeTVar (kbuckets ! kBucketIdx) kb'
                 return $ Right ()
-              else return $ Right () 
+            Nothing -> return $ Right ()
   where
     kBucketIdx = kBucketIndex thisNodeId thatNodeId
 
--- | The 'systemK' closest and most recently seen nodes to this node
+-- | The 'systemK' closest nodes to this node
+{- TODO optimize by sorting closest k buckets so i can exit early -}
 kClosestNodes :: NodeId -> RoutingTable -> IO (V.Vector Node)
-kClosestNodes thisNodeId = V.foldM foldF V.empty
+kClosestNodes thisNodeId rt = stripSTM rt >>= return . systemKClosest
   where
-    foldF :: V.Vector Node -> TVar KBucket -> IO (V.Vector Node)
-    foldF acc tVar
-      | V.length acc == systemK = return acc
-      | otherwise = atomically $ do
-          kb <- readTVar tVar
-          return $ acc V.++ nClosestNodes (systemK - V.length acc) kb
-
-    nClosestNodes :: Int -> KBucket -> V.Vector Node
-    nClosestNodes n = V.fromList
-                    . take n
-                    . sortBy sortF
-                    . map fst
-                    . V.toList
-                    . kContent
+    systemKClosest :: V.Vector KBucket -> V.Vector Node
+    systemKClosest = V.fromList                 -- V.Vector Node
+                   . take systemK               -- [Node]
+                   . sortBy sortF               -- [Node]
+                   . map fst                    -- [Node]
+                   . foldr (++) []              -- [(Node, LastSeen)]
+                   . map (V.toList . kContent)  -- [[(Node, LastSeen)]]
+                   . V.toList                   -- [KBucket]
+                                                -- V.Vector KBucket
 
     sortF :: Node -> Node -> Ordering
     sortF n1 n2 = compare (nodeDist thisNodeId $ nodeId n1)
                           (nodeDist thisNodeId $ nodeId n2)
+
+{-# INLINE stripSTM #-}
+stripSTM :: RoutingTable -> IO (V.Vector KBucket)
+stripSTM = V.mapM readTVarIO

@@ -41,7 +41,7 @@ module Network.DHT.Kademlia.Def (
 , systemK
 , systemBits
 , systemBytes
-, systemα
+, systemAlpha
 , recvBytes
 , chunkBytes
 
@@ -58,6 +58,7 @@ import           Control.Monad
 import           Data.Aeson as JSON
 import           Data.Binary
 import           Data.Bits
+import           Data.Set
 import           Data.Text (Text(..))
 import           Data.Time.Clock
 import           Data.Vector ((!))
@@ -72,6 +73,7 @@ import qualified Data.ByteString as B
 import qualified Data.ByteString.Lazy as BL
 import qualified Data.HashTable.IO as H
 import qualified Data.Vector as V
+import qualified STMContainers.Map as STM
 
 {-
 k-bucket = list = [(IP, Port, NodeId)]
@@ -100,8 +102,13 @@ systemBits = 160
 systemBytes :: Int
 systemBytes = fromIntegral $ systemBits/8
 
-systemα :: Int
-systemα = 3
+-- | Request concurrency (α) during find node and find value operations
+systemAlpha :: Int
+#ifdef TEST
+systemAlpha = 1
+#else
+systemAlpha = 3
+#endif
 
 -- | 548 bytes
 -- 
@@ -160,8 +167,14 @@ data KademliaEnv = KademliaEnv {
                                , routingTable :: RoutingTable
                                -- | Transient store for incoming chunks of data for a 'Key'
                                , mvStoreHT :: MVar StoreHT
-                               , thisNode :: Node -- ^ this node's address
-                               , pingREQs :: TVar (V.Vector (UTCTime, Node)) -- ^ outstanding ping requests originating from this node
+                               -- | This node's address
+                               , thisNode :: Node
+                               -- | Outstanding ping requests originating from this node
+                               , pingREQs :: TVar (V.Vector (UTCTime, Node))
+                               -- | Enables blocking calls to get a list of nodes closest to a key
+                               , findNodeRequestors :: STM.Map NodeId (MVar [NodeId])
+                               -- | Internal tracking for the FIND_NODE operation
+                               , findNodeTracking :: STM.Map NodeId (Set NodeId, Set NodeId, Set NodeId)
                                , logDebug :: (forall a. ToLogStr a => a -> IO ())
                                , logInfo :: (forall a. ToLogStr a => a -> IO ())
                                , logWarn :: (forall a. ToLogStr a => a -> IO ())
@@ -318,26 +331,36 @@ data RPCHooks = RPCHooks {
 
 --data RPCEnvelope = RPCEnvelope NodeId RPC
 
--- | All remote procedure calls sent between 'Node's in a Kademlia network
+-- | All remote procedure calls sent between 'Node's in a Kademlia network.
+-- 
+-- Each RPC has a request (REQ) and response (RES)
+-- 
+-- Descriptions are from the perspective of the sender
 data RPC = RPC_UNKNOWN
-         -- | Payload is this node
+         -- | This node
          | RPC_PING_REQ Node
-         -- | Payload is the sending node
+         -- | This node
          | RPC_PING_RES Node
-         -- | key, chunk sequence number, chunk total, chunk length, chunk of data
+         -- | Key.
+         -- Chunk sequence number.
+         -- Chunk total.
+         -- Chunk length.
+         -- Chunk of data.
          | RPC_STORE_REQ B.ByteString -- key
                          Word32 -- chunk sequence number
                          Word32 -- chunk total
                          Word16 -- chunk length
                          B.ByteString -- chunk of data
-         -- | Payload is this node and the node id it's looking for
-         | RPC_FIND_NODE_REQ Node NodeId
-         -- | Payload is the node we were looking for
-         | RPC_FIND_NODE_RES Node
+         -- | This node. The key this node is looking for.
+         | RPC_FIND_NODE_REQ Node Key
+         -- | This node.
+         -- The key some other node is looking for.
+         -- The k closest nodes known
+         | RPC_FIND_NODE_RES Node Key [NodeId]
          | RPC_FIND_VALUE
          deriving (Show, Eq)
 
--- TODO NOT Binary it adds bytes I didn't expect (custom serialization format)
+-- TODO NOT Binary
 instance Binary RPC where
   put (RPC_PING_REQ node) = do
     putWord8 1
@@ -369,6 +392,11 @@ instance Binary RPC where
     putWord8 4
     put node
     put nodeId
+  put (RPC_FIND_NODE_RES node nodeId nodeIds) = do
+    putWord8 5
+    put node
+    put nodeId
+    put nodeIds
   put (RPC_FIND_VALUE) = putWord8 5
   
   get = do
@@ -383,6 +411,6 @@ instance Binary RPC where
         (l :: Word16) <- replicateM 2 getWord8 >>= return . toWord16
         chunk <- replicateM (fromIntegral l) getWord8 >>= return . B.pack
         return $ RPC_STORE_REQ key n m l chunk
-      --4 -> return $ RPC_FIND_NODE $ Node 0 
-      5 -> return $ RPC_FIND_VALUE
+      4 -> liftM2 RPC_FIND_NODE_REQ get get
+      5 -> liftM3 RPC_FIND_NODE_RES get get get
       otherwise -> return RPC_UNKNOWN

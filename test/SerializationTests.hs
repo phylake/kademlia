@@ -31,6 +31,20 @@ rpcSerialization :: Spec
 rpcSerialization = describe "instance Binary RPC" $ do
   rpcPING
   rpcSTORE
+  rpcFINDNODE
+
+rpcFINDNODE :: Spec
+rpcFINDNODE = describe "FIND_NODE" $ do
+  it "REQ is isomorphic" $
+    bEncodeDecode rpcREQ `shouldBe` rpcREQ
+  it "REP is isomorphic" $
+    bEncodeDecode rpcREP `shouldBe` rpcREP
+  where
+    rpcREQ :: RPC
+    rpcREQ = RPC_FIND_NODE_REQ node1 1
+
+    rpcREP :: RPC
+    rpcREP = RPC_FIND_NODE_RES node2 1 []
 
 rpcSTORE :: Spec
 rpcSTORE = describe "STORE" $ do
@@ -52,13 +66,17 @@ rpcPING = describe "PING" $ do
   it "REP is isomorphic" $
     bEncodeDecode rpcREP `shouldBe` rpcREP
   where
-    node = Node 12345678 $ SockAddrInet (PortNum 1024) 0x7F000001
-    
     rpcREQ :: RPC
-    rpcREQ = RPC_PING_REQ node
+    rpcREQ = RPC_PING_REQ node1
 
     rpcREP :: RPC
-    rpcREP = RPC_PING_RES node
+    rpcREP = RPC_PING_RES node1
+
+node1 :: Node
+node1 = Node 1 $ SockAddrInet (PortNum 1024) 0x7F000001
+
+node2 :: Node
+node2 = Node 2 $ SockAddrInet (PortNum 1024) 0x7F000001
 
 bEncodeDecode :: (Binary a) => a -> a
 bEncodeDecode = Bin.decode . Bin.encode

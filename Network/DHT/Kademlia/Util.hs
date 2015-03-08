@@ -5,12 +5,14 @@ module Network.DHT.Kademlia.Util (
 , storeChunks
 , tryReassemble
 , forkIO_  
+, prunePings  
 ) where
 
 import           Control.Concurrent
 import           Control.Concurrent.STM
 import           Control.Monad
 import           Data.Binary
+import           Data.Time.Clock
 import           Data.Word
 import           GHC.IO.Handle
 import           GHC.IO.Handle.FD
@@ -57,6 +59,20 @@ tryReassemble v = if V.null v || V.any (== B.empty) v
   then Nothing
   else Just $ V.foldl1 B.append v
 
+prunePings :: V.Vector (UTCTime, Node)
+           -- ^ the list to prune
+           -> Node
+           -- ^ the id to prune
+           -> Maybe (V.Vector (UTCTime, Node))
+           -- ^ Nothing if the node wasn't found. Otherwise the pruned list
+prunePings pings thatNode = case V.foldl f (False, V.empty) pings of
+  (True, v) -> Just v
+  otherwise -> Nothing
+  where
+    f (True, v) t = (True, V.snoc v t)
+    f (False, v) (_, p) | p == thatNode = (True, v)
+    f (False, v) t = (False, V.snoc v t)
+
+{-# INLINE forkIO_ #-}
 forkIO_ :: IO () -> IO ()
 forkIO_ = void . forkIO
-{-# INLINE forkIO_ #-}

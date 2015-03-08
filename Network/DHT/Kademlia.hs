@@ -29,6 +29,7 @@ import qualified Data.HashTable.IO as H
 import qualified Data.Text as T
 import qualified Data.Vector as V
 import qualified Network.Socket.ByteString as NB
+import qualified STMContainers.Map as STM
 
 -- | Kademlia as a library starts here.
 -- 
@@ -130,18 +131,12 @@ receiveRPC KademliaEnv{..} send (RPC_PING_REQ thatNode) = do
 receiveRPC KademliaEnv{..} send (RPC_PING_RES thatNode) = do
   foundNode <- atomically $ do
     pings <- readTVar pingREQs
-    let f = (\(bool, v) t@(_, p) -> case bool of
-                                      True -> return (True, V.snoc v t)
-                                      False -> if p == thatNode
-                                        then return (True, v)
-                                        else return (False, V.snoc v t))
-    (foundNode, pings') <- V.foldM f (False, V.empty) pings
-    if foundNode then
-      writeTVar pingREQs pings'
-    else
-      -- nothing to do but write back old value
-      writeTVar pingREQs pings
-    return foundNode
+    -- walk the list of outstanding pings and prune out thatNode if found
+    case prunePings pings thatNode of
+      Nothing -> return False
+      Just pings' -> do
+        writeTVar pingREQs pings'
+        return True  
   if foundNode then
     void $ addNode thisNode routingTable thatNode
   else
@@ -175,7 +170,7 @@ receiveRPC KademliaEnv{..} send (RPC_STORE_REQ k n m _ bs) = do
       (dsSet dataStore) k value
   return ()
 
-receiveRPC KademliaEnv{..} send (RPC_FIND_NODE_REQ node nodeId) = do
+receiveRPC KademliaEnv{..} send (RPC_FIND_NODE_REQ node _) = do
   addNode thisNode routingTable node >>= either logError (\_ -> return ())
   return ()
 
@@ -200,12 +195,22 @@ rpcStore KademliaEnv{..} send key = do
       send chunk
       send $ RPC_PING_REQ thisNode
 
+-- TODO exported blocking findNode that uses findNodeRequestors
+
 rpcFindNode :: KademliaEnv
          -> (RPC -> IO ()) -- ^ send outbound RPCs
          -> NodeId
          -> IO ()
 rpcFindNode KademliaEnv{..} send nodeId = do
-  replicateM systemα $ send $ RPC_FIND_NODE_REQ thisNode nodeId
+  -- TODO track 3 sets
+  --      1. the nodes we've sent     RPC_FIND_NODE_REQ to so they're not resent
+  --      2. the nodes we've received RPC_FIND_NODE_RES from so they can be
+  --         removed from our k-bucket if they timeout
+  --      3. the systemK best nodes we've heard about from RPC_FIND_NODE_REQ
+  -- stop when we hear back from all requests that haven't timed out &&
+  -- no better nodes are found
+  closest <- kClosestNodes nodeId routingTable
+  replicateM systemAlpha $ send $ RPC_FIND_NODE_REQ thisNode nodeId
   return ()
 
 -- | Bottom of 2.3

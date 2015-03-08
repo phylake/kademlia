@@ -31,6 +31,7 @@ executable kademlia
                      , mtl
                      , network
                      , stm
+                     , stm-containers
                      , text
                      , time
                      , timers ==0.*
@@ -62,6 +63,7 @@ library
                      , mtl
                      , network
                      , stm
+                     , stm-containers
                      , text
                      , time
                      , timers ==0.*
@@ -89,6 +91,7 @@ test-suite all
                      , mtl
                      , network
                      , stm
+                     , stm-containers
                      , text
                      , time
                      , timers ==0.*

@@ -59,5 +59,5 @@ getKClosestNodes :: IO [NodeId]
 getKClosestNodes = do
   rt <- atomically $ defaultRoutingTable Nothing
   forM_ [0..6] $ \i -> addNode node7 rt defaultNode {nodeId = i}
-  closest <- kClosestNodes 7 rt
+  closest <- kClosestNodes (nodeId node7) rt
   return $ V.toList $ V.map nodeId closest
