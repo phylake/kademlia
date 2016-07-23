@@ -3,11 +3,12 @@ language: haskell
 ghc:
   - 7.8
 
+before_install:
+  - git submodule update --init --recursive
+
 install:
   - cabal update
+  - cabal install -j --only-dependencies --enable-tests
   - cabal configure --enable-tests
 
 script: cabal build -j && cabal test -j --show-details=always
-
-before_install:
-  - git submodule update --init --recursive
