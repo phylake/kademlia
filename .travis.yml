@@ -3,8 +3,7 @@ language: haskell
 ghc:
   - 7.8
 
-script:
-  cabal update && cabal configure --enable-tests && cabal build -j && cabal test -j --show-details=always
+script: cabal update && cabal configure --enable-tests && cabal build -j && cabal test -j --show-details=always
 
 before_install:
   - git submodule update --init --recursive
