@@ -8,7 +8,7 @@ COPY cabal.config /cabal_install/
 COPY LICENSE /cabal_install/
 WORKDIR /cabal_install
 RUN cabal update
-RUN cabal install -j8 --only-dependencies --enable-tests
+RUN cabal install -j --only-dependencies --enable-tests
 RUN cabal configure
 
 CMD /bin/bash

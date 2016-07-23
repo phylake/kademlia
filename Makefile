@@ -12,5 +12,5 @@ develop:
 
 test:
 	cabal configure --enable-tests
-	cabal build
-	cabal test --show-details=streaming
+	cabal build -j
+	cabal test -j --show-details=streaming
