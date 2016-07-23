@@ -1,4 +1,4 @@
-# Kademlia Distributed Hash Table [![Build Status](https://travis-ci.org/phylake/kademlia.png?branch=master)](https://travis-ci.org/phylake/kademlia)
+# Kademlia Distributed Hash Table
 
 **Don't be fooled by the language stats. This is a Haskell project.**
 
