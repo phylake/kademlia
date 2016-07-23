@@ -1,3 +1,0 @@
-#!/bin/bash
-cabal install -j16 --only-dependencies && cabal configure
-
