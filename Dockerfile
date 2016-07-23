@@ -1,4 +1,4 @@
-FROM haskell:7.8
+FROM haskell:7.10
 
 RUN apt-get update
 RUN apt-get install -y make
@@ -9,6 +9,5 @@ COPY LICENSE /cabal_install/
 WORKDIR /cabal_install
 RUN cabal update
 RUN cabal install -j --only-dependencies --enable-tests
-RUN cabal configure
 
 CMD /bin/bash

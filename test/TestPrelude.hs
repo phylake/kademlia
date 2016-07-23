@@ -9,7 +9,6 @@ module TestPrelude (
 , module TestEq
 
 , addNodeSimple
-, stripSTM
 , newEnv
 , sendNoop
 , defaultNode
